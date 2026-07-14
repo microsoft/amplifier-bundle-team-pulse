@@ -1,0 +1,16 @@
+# Minimal additions to your ~/.amplifier/settings.yaml for the team-pulse bundle.
+# Merge these two stanzas under your existing top-level keys.
+
+bundle:
+  app:
+    - git+https://github.com/microsoft/amplifier-bundle-team-pulse@main
+
+overrides:
+  tool-team-pulse:
+    config:
+      # Mint/rotate keys at <team-pulse-url>/admin → "API keys" panel.
+      # The raw key is shown ONCE at mint time — save it immediately.
+      key: "tp_yourkeyhere"
+      # url is REQUIRED — the bundle ships no default endpoint.
+      # Point this at your team-pulse deployment.
+      url: "https://<your-team-pulse-endpoint>"

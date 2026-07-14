@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "amplifier-module-tool-team-pulse"
+version = "0.2.1"
+description = "Amplifier tool module wrapping the team-pulse lens API (read-mostly, with answer submission write)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Microsoft Corporation" }]
+# no runtime deps; team_pulse_lib and amplifier_core are PEER packages
+# editable-installed by Bundle.prepare() before activation; declaring them
+# here would trigger a PyPI --no-sources resolution failure since
+# team-pulse-lib is unpublished; mirrors wiki-weaver shim pattern
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+]
+
+[project.urls]
+Homepage = "https://github.com/microsoft/amplifier-bundle-team-pulse"
+Repository = "https://github.com/microsoft/amplifier-bundle-team-pulse"
+Issues = "https://github.com/microsoft/amplifier-bundle-team-pulse/issues"
+
+[project.entry-points."amplifier.modules"]
+tool-team-pulse = "amplifier_module_tool_team_pulse:mount"
+
+[tool.hatch.build.targets.wheel]
+packages = ["amplifier_module_tool_team_pulse"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

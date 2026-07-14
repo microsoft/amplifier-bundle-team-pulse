@@ -1,0 +1,69 @@
+bundle:
+  name: behavior-team-pulse
+  version: 0.1.0
+  description: Composes the team-pulse lens-API tool. Agent + reference doc are mode-gated via the /team-pulse mode's contributes block.
+
+# Modes framework.
+#
+# Pulled in via the modes BEHAVIOR (foundation-free), NOT the modes root bundle
+# (the root includes amplifier-foundation, which would re-introduce the very
+# dependency this behavior exists to avoid). This makes the behavior
+# self-sufficient: any bundle composing ONLY behaviors/team-pulse.yaml gets
+# hooks-mode mounted, so the install-anchor scan of this repo's modes/ dir
+# registers the /team-pulse mode (and its mode-gated expert agent + reference
+# doc) even when foundation/anchor is supplied elsewhere in the composition.
+# Previously this include lived in the root bundle.md, so composing the behavior
+# alone yielded the tool but silently dropped the mode/agent unless the host
+# happened to mount hooks-mode from another bundle.
+includes:
+  - bundle: git+https://github.com/microsoft/amplifier-bundle-modes@main#subdirectory=behaviors/modes.yaml
+
+# Lens-API tools.
+#
+# These stay always-on in v1 because contributes.tools is deferred to v1.1
+# (mode-schema-reference.md §6.1). The cost is ~1K tokens of tool schemas in
+# the system prompt whenever the bundle is loaded, even when /team-pulse
+# mode is off. The agent + reference doc, however, ARE mode-gated — see
+# modes/team-pulse.md `contributes` block.
+#
+# Both `url` and `key` are intentionally empty — this bundle ships NO default
+# endpoint. They MUST come from user-side config (the `url` is deployment-
+# specific and the `key` is a per-user secret). mount() resolves both fields
+# in this order:
+#   1. settings.yaml override (non-empty wins)
+#   2. environment variable (AMPLIFIER_TEAM_PULSE_URL / _KEY)
+#   3. fail with a clear error naming BOTH paths
+# An empty string here counts as "not set" so it can't shadow env-var setup.
+tools:
+  - module: tool-team-pulse
+    source: ../modules/tool-team-pulse
+    config:
+      url: ""
+      key: ""
+
+# Intentionally empty: zero always-on context.
+#
+# The reference doc (context/using-team-pulse.md) is loaded by two consumers,
+# both mode/agent-scoped — never in baseline session context:
+#   1. team-pulse-expert agent (@-mention in the agent's `instruction:` block,
+#      which is inlined into modes/team-pulse.md — see workaround note below;
+#      resolved only when the agent spawns into a child session)
+#   2. /team-pulse mode (contributes.context — only while mode is active)
+#
+# The agent itself is also mode-gated. In v1 the agent definition is INLINED
+# into modes/team-pulse.md's `contributes.agents` block rather than living
+# in a standalone agents/team-pulse-expert.md file with a `source:` reference.
+# The reason is a v1 limitation: the contributions overlay does not resolve
+# `source:` into the full agent dict, so the spawner ends up with `{source: ...}`
+# and no instruction or description. Inlining the full agent dict
+# ({description, instruction, model_role}) sidesteps that — the overlay just
+# stores it and the spawner finds what it needs. See modes/team-pulse.md for
+# the rollback path when v1.1 lands proper `source:` resolution.
+#
+# With the mode off, the agent's description does NOT appear in the delegate
+# catalog (~3K tokens saved). Sessions that never activate /team-pulse mode
+# or never delegate to the expert pay nothing for team-pulse agent/context.
+# This follows the "zero context poisoning / context-sink" pattern in the
+# bundle design guide and the BUNDLE_GUIDE behavior-context budget policy.
+context:
+  include: []

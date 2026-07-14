@@ -1,0 +1,82 @@
+# Bundle-root install shim for amplifier-bundle-team-pulse.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The tool-team-pulse module does `from team_pulse_lib import ...` at mount()
+# time. team_pulse_lib is a SIBLING package in this repo (./team-pulse-lib/),
+# not a published PyPI dependency. Amplifier editable-installs only the tool
+# MODULE (via the behavior's `source: ../modules/tool-team-pulse`), so without
+# this file nothing installs team_pulse_lib — on a clean `amplifier bundle add`
+# the import fails, mount() raises ModuleNotFoundError, and NO team_pulse_*
+# tools register.
+#
+# THE MECHANISM AMPLIFIER ACTUALLY HONORS
+# ---------------------------------------
+# amplifier-foundation's Bundle.prepare() calls
+#   activator.activate_bundle_package(self.base_path)
+# BEFORE activating any modules (amplifier_foundation/bundle/_dataclass.py).
+# That function looks for a pyproject.toml at the BUNDLE ROOT with a [project]
+# or [build-system] table and editable-installs it into amplifier's venv via
+#   uv pip install -e <bundle-root> --python <exe> --no-sources
+# (amplifier_foundation/modules/activator.py:activate_bundle_package ->
+#  _install_dependencies). This is the same mechanism wiki-weaver uses: the
+# bundle root declares the shared library package; prepare() installs it
+# editable before modules; the module declares dependencies = [] and treats
+# team_pulse_lib + amplifier_core as PEER packages already present in the venv.
+# With no root pyproject.toml, activate_bundle_package() is a documented no-op —
+# which is exactly the bug this file fixes.
+#
+# WHY WE BUILD team_pulse_lib FROM THE SUBDIR INSTEAD OF DEPENDING ON IT BY NAME
+# -----------------------------------------------------------------------------
+# team-pulse-lib is UNPUBLISHED. Foundation installs with `--no-sources`, which
+# strips [tool.uv.sources] path overrides — so a `team-pulse-lib==0.1.0` name
+# dependency would force a PyPI lookup that fails, and a file:// direct
+# reference is non-portable across machines/DTUs. Building the team_pulse_lib
+# import package directly from the in-repo subdir is the ONLY approach that
+# works for BOTH:
+#   * local / Digital-Twin editable install NOW (lib unpublished, source in repo)
+#   * eventual publish LATER (once team-pulse-lib is on PyPI, the module can
+#     depend on it by name and this shim can be retired)
+# This package is NOT published itself — the publishable artifact is
+# ./team-pulse-lib/ with its own pyproject. This root file is purely the
+# runtime install path for the bundle.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "amplifier-bundle-team-pulse"
+dynamic = ["version"]
+description = "Bundle-root install shim: editable-installs team_pulse_lib into amplifier's venv before module activation. Not published to PyPI."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Microsoft Corporation" }]
+# Runtime dependencies of team_pulse_lib. These MUST stay in lockstep with
+# ./team-pulse-lib/pyproject.toml [project].dependencies, which is the canonical
+# source. We restate them here (rather than inherit transitively) because
+# --no-sources prevents foundation from resolving the sibling lib by name/path,
+# so this shim is the thing that pulls team_pulse_lib's deps into the venv.
+dependencies = [
+    "httpx>=0.27",
+    "pyyaml>=6",
+    "azure-identity>=1.19",
+    # azure.identity.aio.DefaultAzureCredential builds an async pipeline that imports
+    # azure-core's AioHttpTransport -> requires aiohttp at RUNTIME. Without it the Azure
+    # auth path crashes on a clean `amplifier bundle add` with
+    # "ImportError: aiohttp package is not installed". (Lockstep with team-pulse-lib.)
+    "aiohttp>=3",
+]
+
+[tool.hatch.version]
+# Share team_pulse_lib's single source of truth so the shim and lib never drift.
+# (See team-pulse-lib/team_pulse_lib/_version.py — it explicitly documents that
+# library and shim move in lockstep.)
+path = "team-pulse-lib/team_pulse_lib/_version.py"
+
+[tool.hatch.build.targets.wheel]
+# Expose the `team_pulse_lib` import package, built from the in-repo subdir.
+# hatchling strips the leading `team-pulse-lib/` so the package installs at the
+# top level as `team_pulse_lib`.
+packages = ["team-pulse-lib/team_pulse_lib"]

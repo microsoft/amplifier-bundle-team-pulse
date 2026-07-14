@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "team-pulse-lib"
+dynamic = ["version"]
+description = "Standalone async client for the Team Pulse API — zero Amplifier dependency."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "httpx>=0.27",
+    "pyyaml>=6",
+    "azure-identity>=1.19",
+    # RUNTIME dep: azure.identity.aio.DefaultAzureCredential builds an async pipeline
+    # that imports azure-core's AioHttpTransport, which requires aiohttp. Without it
+    # the Azure auth path fails at token acquisition with
+    # "ImportError: aiohttp package is not installed" in any consumer env (Amplifier
+    # shim, partner generator) that installs only runtime deps.
+    "aiohttp>=3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+]
+
+[tool.hatch.version]
+path = "team_pulse_lib/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["team_pulse_lib"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
