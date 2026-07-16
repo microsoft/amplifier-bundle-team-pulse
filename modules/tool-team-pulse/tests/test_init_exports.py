@@ -4,22 +4,24 @@
 """Tests for __init__.py public surface after shim deletion (Task 7).
 
 Acceptance criteria:
-- __all__ lists exactly the 11 tool classes + 'mount' (12 names total).
+- __all__ lists exactly the 13 tool classes + 'mount' (14 names total).
 - Legacy shim symbols are NOT exported (ApiKeyAuth, AzTokenAuth, AzTokenError,
   TeamPulseAPIError, TeamPulseClient, _ClientProvider, ToolResult).
 - __amplifier_module_type__ == 'tool'.
-- sorted(__all__) produces the expected 12-name list ending with 'mount'.
+- sorted(__all__) produces the expected 14-name list ending with 'mount'.
 """
 
 
-def test_all_contains_exactly_11_tool_classes_and_mount():
-    """__all__ must list exactly the 11 public tool classes plus 'mount'."""
+def test_all_contains_exactly_the_tool_classes_and_mount():
+    """__all__ must list exactly the 13 public tool classes plus 'mount'."""
     import amplifier_module_tool_team_pulse as m
 
     expected = sorted(
         [
             "TeamPulseAskTool",
             "TeamPulseConfigureTool",
+            "TeamPulseDownloadAnswersTool",
+            "TeamPulseDownloadCorpusTool",
             "TeamPulseGetTool",
             "TeamPulseGraphTool",
             "TeamPulseInfoTool",
@@ -35,11 +37,11 @@ def test_all_contains_exactly_11_tool_classes_and_mount():
     assert sorted(m.__all__) == expected
 
 
-def test_all_has_exactly_12_names():
-    """__all__ must have exactly 12 names (11 tools + mount)."""
+def test_all_has_exactly_14_names():
+    """__all__ must have exactly 14 names (13 tools + mount)."""
     import amplifier_module_tool_team_pulse as m
 
-    assert len(m.__all__) == 12
+    assert len(m.__all__) == 14
 
 
 def test_legacy_shim_symbols_not_in_all():
@@ -67,10 +69,12 @@ def test_amplifier_module_type_is_tool():
 
 
 def test_all_tool_classes_are_importable():
-    """All 11 tool classes must be importable from the package."""
+    """All 12 tool classes must be importable from the package."""
     from amplifier_module_tool_team_pulse import (
         TeamPulseAskTool,
         TeamPulseConfigureTool,
+        TeamPulseDownloadAnswersTool,
+        TeamPulseDownloadCorpusTool,
         TeamPulseGetTool,
         TeamPulseGraphTool,
         TeamPulseInfoTool,
@@ -87,6 +91,8 @@ def test_all_tool_classes_are_importable():
     for cls in [
         TeamPulseAskTool,
         TeamPulseConfigureTool,
+        TeamPulseDownloadAnswersTool,
+        TeamPulseDownloadCorpusTool,
         TeamPulseGetTool,
         TeamPulseGraphTool,
         TeamPulseInfoTool,

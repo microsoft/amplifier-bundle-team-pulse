@@ -138,19 +138,24 @@ answers. `team_pulse_download_answers` bulk-pulls them to disk for offline
 analysis / eval / archiving:
 
 ```python
-team_pulse_download_answers(dest_dir="./answers")                        # all questions
-team_pulse_download_answers(dest_dir="./answers", questions="a,b")       # specific ids
+team_pulse_download_answers(dest_dir="./answers")                                  # all questions
+team_pulse_download_answers(dest_dir="./answers", questions=["higher-level-work"]) # specific ids
 ```
 
 - It writes one Q&A unit per question — `qa/<id>.json` (authoritative) +
   `qa/<id>.md` (readable) — plus a `manifest.json`, then returns a **summary**
-  (`{written, dest_dir, questions, bytes}`) — **never the answer bodies**.
+  (`{written, dest_dir, questions, unmatched, bytes}`) — **never the answer
+  bodies**. Read the extracted files under `dest_dir` locally.
 - It carries respondent **attribution** and full answer metadata: it exposes
   exactly what the app already shows a member per question, so treat the local
   copy as **member data**, not public.
-- The `questions` narrow takes **question ids** — discover them with
-  `team_pulse_resources(type="question")`, never assume them. An unknown id
-  yields an empty result (not an error).
+- The `questions` narrow is a **list of question ids** — discover them with
+  `team_pulse_resources(type="question")` and pass each id as returned (bare
+  `<slug>` and qualified `questions/<slug>` are equivalent). Omit for all.
+- If you narrowed and an id matched nothing, it comes back in the summary's
+  **`unmatched`** list — fix that id (via `team_pulse_resources(type="question")`)
+  and retry, rather than re-guessing.
 - Same auth as the corpus pull: **per-user bearer (`az`)**; a shared API key is
-  refused (403). Use the read tools (`resources` / `get`) for one answer set
-  in-session; use this only for the offline bulk pull.
+  refused (403). If you get a `bearer_required` error, check `team_pulse_status`
+  / `team_pulse_whoami`. Use the read tools (`resources` / `get`) for one answer
+  set in-session; use this only for the offline bulk pull.

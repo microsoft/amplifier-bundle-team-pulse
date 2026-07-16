@@ -517,8 +517,8 @@ class TeamPulseDownloadAnswersTool(_LensTool):
         "auth — a shared API key is refused (403), because a bulk pull of member "
         "data must be attributable to a member. Optionally pass questions to "
         "narrow to specific question ids; discover valid ids with "
-        "team_pulse_resources(type='question'). For a single answer in-session, "
-        "use the read tools instead of this bulk path."
+        "team_pulse_resources(type='question') and pass them as returned. For a "
+        "single answer in-session, use the read tools instead of this bulk path."
     )
 
     @property
@@ -528,15 +528,19 @@ class TeamPulseDownloadAnswersTool(_LensTool):
             "properties": {
                 "dest_dir": {
                     "type": "string",
-                    "description": ("Local directory to extract the answers into (created if absent)."),
+                    "description": (
+                        "Local directory to extract the answers into (created if absent), e.g. './answers'."
+                    ),
                 },
                 "questions": {
-                    "type": "string",
+                    "type": "array",
+                    "items": {"type": "string"},
                     "description": (
-                        "Optional narrow — a comma-separated list of question ids "
-                        "(e.g. 'higher-level-work,hard-questions'). Discover valid "
-                        "ids with team_pulse_resources(type='question'). Omit for "
-                        "all questions. An unknown id simply yields an empty result."
+                        "Optional narrow — question ids to fetch. Discover them with "
+                        "team_pulse_resources(type='question') and pass each id as "
+                        "returned (the bare '<slug>' and qualified 'questions/<slug>' "
+                        "forms are equivalent). Omit for all questions. Any id that "
+                        "matched nothing is reported in the summary's 'unmatched'."
                     ),
                 },
             },
@@ -545,18 +549,21 @@ class TeamPulseDownloadAnswersTool(_LensTool):
         }
 
     async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
-        questions = input.get("questions")
+        # Coerce an empty/omitted narrow to None (= all) so the agent path never
+        # hits the client's explicit-empty guard; a real narrow passes through.
+        questions = input.get("questions") or None
         output = await client.download_answers(dest_dir=input["dest_dir"], questions=questions)
-        # Self-correction hint: a 0-file result almost always means the question
-        # id(s) were wrong (they are instance-specific). Point at discovery.
-        if isinstance(output, dict) and output.get("written") == 0:
-            if questions:
+        # One consistent self-correction message for "some/all ids matched nothing",
+        # so the model learns a single failure shape. Prefer the precise `unmatched`
+        # list (partial miss); fall back to the whole-empty case.
+        if isinstance(output, dict):
+            unmatched = output.get("unmatched")
+            if unmatched:
                 output["note"] = (
-                    f"0 files matched questions {questions!r}. Question ids are "
-                    "instance-specific — list the valid ones with "
-                    "team_pulse_resources(type='question'), then retry."
+                    f"These question ids matched nothing: {unmatched}. Discover valid "
+                    "ids with team_pulse_resources(type='question'), then retry."
                 )
-            else:
+            elif output.get("written") == 0:
                 output["note"] = "0 files — no questions exist on this instance yet."
         return ToolResult(success=True, output=output)
 

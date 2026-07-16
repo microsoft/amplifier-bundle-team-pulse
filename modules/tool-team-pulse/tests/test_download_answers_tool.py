@@ -3,9 +3,10 @@
 
 """Tests for TeamPulseDownloadAnswersTool (the bulk offline Q&A-pull tool).
 
-The tool forwards dest_dir + questions to client.download_answers and returns
-the summary verbatim — never answer bodies. It is registered in the data tool
-list and exported from the package.
+The tool forwards dest_dir + questions (an array) to client.download_answers and
+returns the summary verbatim — never answer bodies. It surfaces the client's
+`unmatched` as a self-correction note. Registered in the data tool list and
+exported from the package.
 """
 
 from __future__ import annotations
@@ -32,27 +33,48 @@ async def test_forwards_dest_dir_and_questions_and_returns_summary() -> None:
         "written": 8,
         "dest_dir": "/tmp/answers",
         "questions": "higher-level-work",
+        "unmatched": [],
         "bytes": 120_000,
     }
     mock_client = AsyncMock()
     mock_client.download_answers.return_value = summary
 
     tool = TeamPulseDownloadAnswersTool(_make_provider(mock_client))
-    result = await tool.execute({"dest_dir": "/tmp/answers", "questions": "higher-level-work"})
+    result = await tool.execute(
+        {"dest_dir": "/tmp/answers", "questions": ["higher-level-work"]}
+    )
 
     assert result.success is True
     assert result.output == summary
-    mock_client.download_answers.assert_awaited_once_with(dest_dir="/tmp/answers", questions="higher-level-work")
+    mock_client.download_answers.assert_awaited_once_with(
+        dest_dir="/tmp/answers", questions=["higher-level-work"]
+    )
 
 
-async def test_questions_optional() -> None:
+async def test_questions_optional_maps_to_none() -> None:
     mock_client = AsyncMock()
-    mock_client.download_answers.return_value = {"written": 0}
+    mock_client.download_answers.return_value = {"written": 0, "unmatched": None}
     tool = TeamPulseDownloadAnswersTool(_make_provider(mock_client))
 
     await tool.execute({"dest_dir": "/tmp/answers"})
 
-    mock_client.download_answers.assert_awaited_once_with(dest_dir="/tmp/answers", questions=None)
+    mock_client.download_answers.assert_awaited_once_with(
+        dest_dir="/tmp/answers", questions=None
+    )
+
+
+async def test_empty_array_coerced_to_none() -> None:
+    """An empty array from the model is coerced to None (= all), never passed as []
+    (which the client would reject)."""
+    mock_client = AsyncMock()
+    mock_client.download_answers.return_value = {"written": 4, "unmatched": None}
+    tool = TeamPulseDownloadAnswersTool(_make_provider(mock_client))
+
+    await tool.execute({"dest_dir": "/tmp/answers", "questions": []})
+
+    mock_client.download_answers.assert_awaited_once_with(
+        dest_dir="/tmp/answers", questions=None
+    )
 
 
 def test_tool_metadata_and_schema() -> None:
@@ -61,9 +83,9 @@ def test_tool_metadata_and_schema() -> None:
     schema = tool.input_schema
     assert schema["required"] == ["dest_dir"]
     questions = schema["properties"]["questions"]
-    assert questions["type"] == "string"
-    # Data-agnostic: question ids are instance-specific, discovered via resources.
-    assert "enum" not in questions
+    # Array of strings — the LLM-friendly shape for a plural narrow.
+    assert questions["type"] == "array"
+    assert questions["items"]["type"] == "string"
     assert "team_pulse_resources" in questions["description"]
     assert schema["additionalProperties"] is False
 
@@ -72,31 +94,35 @@ def test_registered_in_data_tool_classes() -> None:
     assert _ToolFromModule in _DATA_TOOL_CLASSES
 
 
-async def test_written_zero_with_questions_adds_discovery_note() -> None:
-    """A 0-file result for a questions narrow points the model at discovery."""
+async def test_unmatched_adds_self_correction_note() -> None:
+    """A partial miss (some ids matched nothing) surfaces a note listing them."""
     mock_client = AsyncMock()
     mock_client.download_answers.return_value = {
-        "written": 0,
+        "written": 3,
         "dest_dir": "/tmp/answers",
-        "questions": "nope",
-        "bytes": 22,
+        "questions": "higher-level-work,nope",
+        "unmatched": ["nope"],
+        "bytes": 60_000,
     }
     tool = TeamPulseDownloadAnswersTool(_make_provider(mock_client))
-    result = await tool.execute({"dest_dir": "/tmp/answers", "questions": "nope"})
+    result = await tool.execute(
+        {"dest_dir": "/tmp/answers", "questions": ["higher-level-work", "nope"]}
+    )
 
     assert result.success is True
     assert "note" in result.output
-    assert "team_pulse_resources" in result.output["note"]
     assert "nope" in result.output["note"]
+    assert "team_pulse_resources" in result.output["note"]
 
 
-async def test_written_nonzero_has_no_note() -> None:
-    """A normal (non-empty) result is returned verbatim — no note noise."""
+async def test_no_unmatched_no_note() -> None:
+    """A clean result (nothing unmatched) is returned verbatim — no note noise."""
     mock_client = AsyncMock()
     mock_client.download_answers.return_value = {
         "written": 8,
         "dest_dir": "/tmp/answers",
         "questions": None,
+        "unmatched": None,
         "bytes": 120_000,
     }
     tool = TeamPulseDownloadAnswersTool(_make_provider(mock_client))

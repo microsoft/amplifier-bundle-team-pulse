@@ -74,6 +74,8 @@ _EXPECTED_NAMES = {
     "team_pulse_prefix",
     "team_pulse_get",
     "team_pulse_graph",
+    "team_pulse_download_corpus",
+    "team_pulse_download_answers",
     "team_pulse_submit_answer",
     "team_pulse_ask",
     "team_pulse_status",
@@ -81,7 +83,7 @@ _EXPECTED_NAMES = {
 
 
 async def test_all_expected_names_present_including_status() -> None:
-    """All 10 tool names are mounted, including team_pulse_status."""
+    """All tool names are mounted, including the two bulk download tools."""
     coord = _FakeCoordinator()
     await mount(coord, {})
     names = {name for _, _, name in coord.mounted}
