@@ -59,12 +59,14 @@ def _server_error_message(body: str) -> str:
 
 
 def _extract_zip_safely(data: bytes, dest: Path) -> int:
-    """Extract a corpus zip into *dest*, guarding against zip-slip.
+    """Extract a download zip into *dest*, guarding against zip-slip.
 
+    Shared by :meth:`download_corpus` (``corpus/<...>`` arcnames) and
+    :meth:`download_answers` (``qa/<id>.json`` / ``.md`` + ``manifest.json``).
     Returns the number of files written. Any member whose resolved path would
     escape *dest* (absolute path or ``..`` traversal) is skipped rather than
-    written — the server only ever emits sandboxed ``corpus/<...>`` ids, so this
-    is belt-and-braces defence for an untrusted archive.
+    written — the server only ever emits sandboxed relative arcnames, so this is
+    belt-and-braces defence for an untrusted archive.
     """
     dest = Path(dest).resolve()
     dest.mkdir(parents=True, exist_ok=True)
@@ -82,6 +84,29 @@ def _extract_zip_safely(data: bytes, dest: Path) -> int:
                 out.write(src.read())
             written += 1
     return written
+
+
+def _unmatched_from_manifest(dest: Path) -> list[str] | None:
+    """Return requested question ids the server had no question for, or ``None``.
+
+    Pure diff of the ``manifest.json`` the answers download already wrote to disk:
+    ``scope.questions`` is the server-normalized *requested* set and each
+    ``questions[].question_id`` is a *fulfilled* id — so comparing them needs no
+    client-side id normalization (both sides are already normalized by the
+    server). Returns ``None`` when no narrow was given (``scope.questions`` empty)
+    or the manifest is missing/unreadable — a summary nicety must never fail the
+    download. Never reads answer bodies.
+    """
+    manifest_path = Path(dest) / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        scope = (manifest.get("scope") or {}).get("questions")
+        if not scope:  # None or [] -> no narrow -> nothing to report
+            return None
+        fulfilled = {q.get("question_id") for q in manifest.get("questions", [])}
+        return [qid for qid in scope if qid not in fulfilled]
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -566,6 +591,78 @@ class TeamPulseClient:
             "bytes": len(data),
         }
 
+    async def download_answers(
+        self,
+        dest_dir: str | Path,
+        questions: str | list[str] | None = None,
+    ) -> dict[str, Any]:
+        """GET /api/lens/answers/download — pull questions+answers as a zip to disk.
+
+        Sibling of :meth:`download_corpus`, sourced from the answers store rather
+        than the corpus: it fetches a binary zip of each question together with
+        its answers (``qa/<qid>.json`` + ``.md`` per question, plus a
+        ``manifest.json``) and extracts it under *dest_dir*. Returns a provenance
+        SUMMARY only — never the answer bodies.
+
+        The download carries respondent ATTRIBUTION and full answer metadata: it
+        exposes exactly what the member read surface already exposes, so treat the
+        local copy as member data.
+
+        The endpoint is bearer-only on the server (Door 2): a shared API key is
+        refused (403), because a bulk pull of member data must be attributable to
+        a member.
+
+        Ids may be passed in either the bare (``higher-level-work``) or the
+        qualified (``questions/higher-level-work``) form — the server accepts both
+        (it strips the ``questions/`` prefix), so pass ids verbatim as discovery
+        returns them; the client does not re-implement that normalization.
+
+        Args:
+            dest_dir: Local directory to extract into (created if absent).
+            questions: Optional narrow — a question id, a list of ids, or a
+                comma-separated string. Discover valid ids via
+                ``fetch_questions()`` / ``resources(type="question")``. Omit
+                (``None``) for all questions. Passing an EXPLICIT empty
+                value (``[]`` / ``""``) raises ``ValueError`` rather than silently
+                widening to "download everything".
+
+        Returns:
+            ``{written, dest_dir, questions, unmatched, bytes}`` where
+            ``unmatched`` lists any requested ids the server had no question for
+            (``None`` when no narrow was given or the manifest is unreadable), so a
+            caller can self-correct a partial miss in one step.
+
+        Raises:
+            ValueError: When *questions* is passed but empty after cleaning.
+            TeamPulseAuthError: 401/403 (shared key refused, or non-member).
+            TeamPulseAPIError: Any other non-2xx response.
+        """
+        if questions is None:
+            params: dict[str, str] | None = None
+            requested: list[str] | None = None
+        else:
+            # Branch on str (a str is itself iterable); everything else -> list.
+            raw = questions.split(",") if isinstance(questions, str) else list(questions)
+            requested = [str(q).strip() for q in raw if str(q).strip()]
+            if not requested:
+                # An explicit-but-empty narrow must NOT widen to a full member-data
+                # pull — that is the opposite of the caller's intent.
+                raise ValueError(
+                    "questions is empty; omit it (None) to download all, or pass at least one id to narrow"
+                )
+            params = {"questions": ",".join(requested)}
+        resp = await self._get("/api/lens/answers/download", params=params)
+        data = resp.content
+        dest = Path(dest_dir)
+        written = _extract_zip_safely(data, dest)
+        return {
+            "written": written,
+            "dest_dir": str(dest),
+            "questions": ",".join(requested) if requested else None,
+            "unmatched": _unmatched_from_manifest(dest),
+            "bytes": len(data),
+        }
+
     # ------------------------------------------------------------------
     # Typed question reads
     # ------------------------------------------------------------------
@@ -606,9 +703,7 @@ class TeamPulseClient:
             status: One of ``'active'`` (default), ``'archived'``, or ``'all'``.
                 ``'all'`` returns every question regardless of status.
         """
-        resp = await self._get(
-            "/api/lens/resources", params={"type": "question", "status": status}
-        )
+        resp = await self._get("/api/lens/resources", params={"type": "question", "status": status})
         body = resp.json()
         resources = body.get("resources") if isinstance(body, dict) else None
         if not isinstance(resources, list):

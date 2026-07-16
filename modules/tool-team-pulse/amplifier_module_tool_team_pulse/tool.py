@@ -499,6 +499,75 @@ class TeamPulseDownloadCorpusTool(_LensTool):
         return ToolResult(success=True, output=output)
 
 
+class TeamPulseDownloadAnswersTool(_LensTool):
+    """Bulk-download questions + their answers to a local directory for offline
+    use. Fetches the answers zip in one call, extracts it under dest_dir, and
+    returns a SUMMARY (counts, dest_dir, questions) — never the answer bodies."""
+
+    name = "team_pulse_download_answers"
+    description = (
+        "Bulk-download the team's questions together with their answers to a "
+        "LOCAL DIRECTORY, for offline analysis / eval / archiving. Fetches a zip "
+        "(one qa/<id>.json + qa/<id>.md per question, plus a manifest.json) and "
+        "extracts it under dest_dir. Returns a SUMMARY {written, dest_dir, "
+        "questions, bytes} — NOT the answer bodies (pulling them all into context "
+        "could crash the session). This carries respondent ATTRIBUTION and full "
+        "answer metadata — the same member-only data the app shows per question — "
+        "so treat the local copy as member data. Requires per-user BEARER (az) "
+        "auth — a shared API key is refused (403), because a bulk pull of member "
+        "data must be attributable to a member. Optionally pass questions to "
+        "narrow to specific question ids; discover valid ids with "
+        "team_pulse_resources(type='question') and pass them as returned. For a "
+        "single answer in-session, use the read tools instead of this bulk path."
+    )
+
+    @property
+    def input_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "dest_dir": {
+                    "type": "string",
+                    "description": (
+                        "Local directory to extract the answers into (created if absent), e.g. './answers'."
+                    ),
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Optional narrow — question ids to fetch. Discover them with "
+                        "team_pulse_resources(type='question') and pass each id as "
+                        "returned (the bare '<slug>' and qualified 'questions/<slug>' "
+                        "forms are equivalent). Omit for all questions. Any id that "
+                        "matched nothing is reported in the summary's 'unmatched'."
+                    ),
+                },
+            },
+            "required": ["dest_dir"],
+            "additionalProperties": False,
+        }
+
+    async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
+        # Coerce an empty/omitted narrow to None (= all) so the agent path never
+        # hits the client's explicit-empty guard; a real narrow passes through.
+        questions = input.get("questions") or None
+        output = await client.download_answers(dest_dir=input["dest_dir"], questions=questions)
+        # One consistent self-correction message for "some/all ids matched nothing",
+        # so the model learns a single failure shape. Prefer the precise `unmatched`
+        # list (partial miss); fall back to the whole-empty case.
+        if isinstance(output, dict):
+            unmatched = output.get("unmatched")
+            if unmatched:
+                output["note"] = (
+                    f"These question ids matched nothing: {unmatched}. Discover valid "
+                    "ids with team_pulse_resources(type='question'), then retry."
+                )
+            elif output.get("written") == 0:
+                output["note"] = "0 files — no questions exist on this instance yet."
+        return ToolResult(success=True, output=output)
+
+
 class TeamPulseGetTool(_LensTool):
     """Fetch a single resource by full ID. Returns the resource envelope
     {id, title, type, data, metadata}. Examples of valid IDs:
@@ -841,6 +910,7 @@ _DATA_TOOL_CLASSES: list[type[_LensTool]] = [
     TeamPulseGetTool,
     TeamPulseGraphTool,
     TeamPulseDownloadCorpusTool,
+    TeamPulseDownloadAnswersTool,
     TeamPulseSubmitAnswerTool,
     TeamPulseAskTool,
     TeamPulseStatusTool,

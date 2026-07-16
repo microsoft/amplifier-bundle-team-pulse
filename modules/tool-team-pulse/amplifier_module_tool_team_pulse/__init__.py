@@ -10,6 +10,7 @@ and a :func:`mount` entry point — nothing else.
 Public surface:
     * :class:`TeamPulseAskTool`
     * :class:`TeamPulseConfigureTool`
+    * :class:`TeamPulseDownloadAnswersTool`
     * :class:`TeamPulseDownloadCorpusTool`
     * :class:`TeamPulseGetTool`
     * :class:`TeamPulseGraphTool`
@@ -26,6 +27,7 @@ Public surface:
 from .tool import (
     TeamPulseAskTool,
     TeamPulseConfigureTool,
+    TeamPulseDownloadAnswersTool,
     TeamPulseDownloadCorpusTool,
     TeamPulseGetTool,
     TeamPulseGraphTool,
@@ -42,6 +44,7 @@ from .tool import (
 __all__ = [
     "TeamPulseAskTool",
     "TeamPulseConfigureTool",
+    "TeamPulseDownloadAnswersTool",
     "TeamPulseDownloadCorpusTool",
     "TeamPulseGetTool",
     "TeamPulseGraphTool",
