@@ -566,6 +566,54 @@ class TeamPulseClient:
             "bytes": len(data),
         }
 
+    async def download_answers(
+        self,
+        dest_dir: str | Path,
+        questions: str | list[str] | None = None,
+    ) -> dict[str, Any]:
+        """GET /api/lens/answers/download — pull questions+answers as a zip to disk.
+
+        Sibling of :meth:`download_corpus`, sourced from the answers store rather
+        than the corpus: it fetches a binary zip of each question together with
+        its answers (``qa/<qid>.json`` + ``.md`` per question, plus a
+        ``manifest.json``) and extracts it under *dest_dir*. Returns a provenance
+        SUMMARY only — never the answer bodies.
+
+        The download carries respondent ATTRIBUTION and full answer metadata: it
+        exposes exactly what the member read surface already exposes, so treat the
+        local copy as member data.
+
+        The endpoint is bearer-only on the server (Door 2): a shared API key is
+        refused (403), because a bulk pull of member data must be attributable to
+        a member.
+
+        Args:
+            dest_dir: Local directory to extract into (created if absent).
+            questions: Optional narrow — a bare question id, a list of ids, or a
+                comma-separated string. Discover valid ids via
+                ``fetch_questions()`` / ``resources(type="question")``; an unknown
+                id yields nothing (not an error). Omit for all questions.
+
+        Returns:
+            ``{written: int, dest_dir: str, questions: str | None, bytes: int}``.
+
+        Raises:
+            TeamPulseAuthError: 401/403 (shared key refused, or non-member).
+            TeamPulseAPIError: Any other non-2xx response.
+        """
+        qs = ",".join(questions) if isinstance(questions, list) else questions
+        params = {"questions": qs} if qs else None
+        resp = await self._get("/api/lens/answers/download", params=params)
+        data = resp.content
+        dest = Path(dest_dir)
+        written = _extract_zip_safely(data, dest)
+        return {
+            "written": written,
+            "dest_dir": str(dest),
+            "questions": qs,
+            "bytes": len(data),
+        }
+
     # ------------------------------------------------------------------
     # Typed question reads
     # ------------------------------------------------------------------
@@ -606,9 +654,7 @@ class TeamPulseClient:
             status: One of ``'active'`` (default), ``'archived'``, or ``'all'``.
                 ``'all'`` returns every question regardless of status.
         """
-        resp = await self._get(
-            "/api/lens/resources", params={"type": "question", "status": status}
-        )
+        resp = await self._get("/api/lens/resources", params={"type": "question", "status": status})
         body = resp.json()
         resources = body.get("resources") if isinstance(body, dict) else None
         if not isinstance(resources, list):

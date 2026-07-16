@@ -499,6 +499,68 @@ class TeamPulseDownloadCorpusTool(_LensTool):
         return ToolResult(success=True, output=output)
 
 
+class TeamPulseDownloadAnswersTool(_LensTool):
+    """Bulk-download questions + their answers to a local directory for offline
+    use. Fetches the answers zip in one call, extracts it under dest_dir, and
+    returns a SUMMARY (counts, dest_dir, questions) — never the answer bodies."""
+
+    name = "team_pulse_download_answers"
+    description = (
+        "Bulk-download the team's questions together with their answers to a "
+        "LOCAL DIRECTORY, for offline analysis / eval / archiving. Fetches a zip "
+        "(one qa/<id>.json + qa/<id>.md per question, plus a manifest.json) and "
+        "extracts it under dest_dir. Returns a SUMMARY {written, dest_dir, "
+        "questions, bytes} — NOT the answer bodies (pulling them all into context "
+        "could crash the session). This carries respondent ATTRIBUTION and full "
+        "answer metadata — the same member-only data the app shows per question — "
+        "so treat the local copy as member data. Requires per-user BEARER (az) "
+        "auth — a shared API key is refused (403), because a bulk pull of member "
+        "data must be attributable to a member. Optionally pass questions to "
+        "narrow to specific question ids; discover valid ids with "
+        "team_pulse_resources(type='question'). For a single answer in-session, "
+        "use the read tools instead of this bulk path."
+    )
+
+    @property
+    def input_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "dest_dir": {
+                    "type": "string",
+                    "description": ("Local directory to extract the answers into (created if absent)."),
+                },
+                "questions": {
+                    "type": "string",
+                    "description": (
+                        "Optional narrow — a comma-separated list of question ids "
+                        "(e.g. 'higher-level-work,hard-questions'). Discover valid "
+                        "ids with team_pulse_resources(type='question'). Omit for "
+                        "all questions. An unknown id simply yields an empty result."
+                    ),
+                },
+            },
+            "required": ["dest_dir"],
+            "additionalProperties": False,
+        }
+
+    async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
+        questions = input.get("questions")
+        output = await client.download_answers(dest_dir=input["dest_dir"], questions=questions)
+        # Self-correction hint: a 0-file result almost always means the question
+        # id(s) were wrong (they are instance-specific). Point at discovery.
+        if isinstance(output, dict) and output.get("written") == 0:
+            if questions:
+                output["note"] = (
+                    f"0 files matched questions {questions!r}. Question ids are "
+                    "instance-specific — list the valid ones with "
+                    "team_pulse_resources(type='question'), then retry."
+                )
+            else:
+                output["note"] = "0 files — no questions exist on this instance yet."
+        return ToolResult(success=True, output=output)
+
+
 class TeamPulseGetTool(_LensTool):
     """Fetch a single resource by full ID. Returns the resource envelope
     {id, title, type, data, metadata}. Examples of valid IDs:
@@ -841,6 +903,7 @@ _DATA_TOOL_CLASSES: list[type[_LensTool]] = [
     TeamPulseGetTool,
     TeamPulseGraphTool,
     TeamPulseDownloadCorpusTool,
+    TeamPulseDownloadAnswersTool,
     TeamPulseSubmitAnswerTool,
     TeamPulseAskTool,
     TeamPulseStatusTool,

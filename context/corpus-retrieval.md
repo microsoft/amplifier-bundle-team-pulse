@@ -129,3 +129,28 @@ team_pulse_download_corpus(dest_dir="./corpus", folder="<sub-corpus>") # one sub
   `team_pulse_whoami` if you get a `bearer_required` error.
 - Use it for offline/bulk analysis. For answering a question *now*, stay with
   §1–§7 (search → get one page).
+
+## 9. Downloading questions + answers (`team_pulse_download_answers`)
+
+Distinct from the corpus: the corpus is team-safe mined knowledge, whereas the
+**answers** are the team's reflection Q&A — questions plus their submitted
+answers. `team_pulse_download_answers` bulk-pulls them to disk for offline
+analysis / eval / archiving:
+
+```python
+team_pulse_download_answers(dest_dir="./answers")                        # all questions
+team_pulse_download_answers(dest_dir="./answers", questions="a,b")       # specific ids
+```
+
+- It writes one Q&A unit per question — `qa/<id>.json` (authoritative) +
+  `qa/<id>.md` (readable) — plus a `manifest.json`, then returns a **summary**
+  (`{written, dest_dir, questions, bytes}`) — **never the answer bodies**.
+- It carries respondent **attribution** and full answer metadata: it exposes
+  exactly what the app already shows a member per question, so treat the local
+  copy as **member data**, not public.
+- The `questions` narrow takes **question ids** — discover them with
+  `team_pulse_resources(type="question")`, never assume them. An unknown id
+  yields an empty result (not an error).
+- Same auth as the corpus pull: **per-user bearer (`az`)**; a shared API key is
+  refused (403). Use the read tools (`resources` / `get`) for one answer set
+  in-session; use this only for the offline bulk pull.
