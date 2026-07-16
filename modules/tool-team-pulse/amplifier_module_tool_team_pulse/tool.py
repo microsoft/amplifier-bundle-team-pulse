@@ -622,10 +622,10 @@ class TeamPulseSubmitAnswerTool(_LensTool):
     Use this to record an AI-generated answer attributed to a specific user,
     synthesized from their Context Intelligence sessions.
 
-    question_id is the BARE SLUG (e.g. 'higher-level-work'), NOT the
-    hierarchical 'questions/<slug>' form — strip the 'questions/' prefix if
-    you have it. Discover valid slugs via team_pulse_resources(type='question')
-    and use the data.id field (or strip the prefix from the list-envelope id).
+    question_id is a question slug (e.g. 'higher-level-work'). Pass it as
+    discovery returns it — the bare '<slug>' and the qualified 'questions/<slug>'
+    forms are equivalent (the bundle strips the 'questions/' prefix). Discover
+    valid ids via team_pulse_resources(type='question').
 
     user_id is the github username of the person the answer is about; the
     bundle records it as a github-namespaced identity (the API stores it
@@ -639,10 +639,10 @@ class TeamPulseSubmitAnswerTool(_LensTool):
         "Submit a session-mined answer to a team-pulse reflection question. "
         "Use this to record an AI-generated answer attributed to a specific user, "
         "synthesized from their Context Intelligence sessions.\n\n"
-        "question_id is the BARE SLUG (e.g. 'higher-level-work'), NOT the "
-        "hierarchical 'questions/<slug>' form — strip the 'questions/' prefix if "
-        "you have it. Discover valid slugs via team_pulse_resources(type='question') "
-        "and use the data.id field (or strip the prefix from the list-envelope id).\n\n"
+        "question_id is a question slug (e.g. 'higher-level-work'). Pass it as "
+        "discovery returns it — the bare '<slug>' and qualified 'questions/<slug>' "
+        "forms are equivalent (the bundle strips the 'questions/' prefix). Discover "
+        "valid ids via team_pulse_resources(type='question').\n\n"
         "user_id is the github username of the person the answer is about; the "
         "bundle records it as a github-namespaced identity (the API stores it "
         "verbatim and resolves to a team member at read time). "
@@ -658,9 +658,14 @@ class TeamPulseSubmitAnswerTool(_LensTool):
             "properties": {
                 "question_id": {
                     "type": "string",
-                    "pattern": "^[a-z0-9][a-z0-9-]*$",
+                    # Accept both the bare slug and the qualified 'questions/<slug>'
+                    # form (the _call strips the prefix). The optional 'questions/'
+                    # keeps the qualified id discovery returns from being rejected
+                    # at the schema boundary.
+                    "pattern": "^(questions/)?[a-z0-9][a-z0-9-]*$",
                     "description": (
-                        "Bare question slug (e.g. 'higher-level-work'). Hierarchical 'questions/<slug>' is rejected."
+                        "Question slug (e.g. 'higher-level-work'). The bare '<slug>' "
+                        "and qualified 'questions/<slug>' forms are equivalent."
                     ),
                 },
                 "user_id": {
@@ -691,8 +696,14 @@ class TeamPulseSubmitAnswerTool(_LensTool):
         }
 
     async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
+        # Accept the qualified id form discovery returns; the submit endpoint
+        # keys on the bare slug, so strip a leading 'questions/' here. Mirrors the
+        # server-side leniency the answers-download endpoints now have.
+        qid = input["question_id"]
+        if qid.startswith("questions/"):
+            qid = qid[len("questions/") :]
         upload = AnswerUpload(
-            question_id=input["question_id"],
+            question_id=qid,
             user_id=input["user_id"],
             answer=input["answer"],
             generated_at=input["generated_at"],
