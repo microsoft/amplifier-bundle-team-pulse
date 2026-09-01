@@ -89,3 +89,26 @@ class TestClientInfo:
     def test_server_supports_metadata_field_is_gone(self) -> None:
         field_names = {f.name for f in dataclasses.fields(ClientInfo)}
         assert "server_supports_metadata" not in field_names
+
+    def test_az_identity_hint_defaults_to_none(self) -> None:
+        ci = ClientInfo(
+            base_url="https://example.com",
+            auth_mode="key",
+            api_app_id=None,
+            credential_type="api_key",
+            forced=False,
+            resolved=False,
+        )
+        assert ci.az_identity_hint is None
+
+    def test_az_identity_hint_accepts_explicit_value(self) -> None:
+        ci = ClientInfo(
+            base_url="https://example.com",
+            auth_mode="az",
+            api_app_id="dea6e881-4cd8-4aba-87da-a52ff3e19bce",
+            credential_type="azure_default_credential",
+            forced=False,
+            resolved=True,
+            az_identity_hint="samuel@microsoft.com",
+        )
+        assert ci.az_identity_hint == "samuel@microsoft.com"

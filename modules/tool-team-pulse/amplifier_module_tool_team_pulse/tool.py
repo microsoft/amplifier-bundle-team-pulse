@@ -304,16 +304,20 @@ class TeamPulseInfoTool(_LensTool):
 
 class TeamPulseResourcesTool(_LensTool):
     """List team-pulse resources. Returns the list envelope
-    {resources: [{id, title, type}], count}. Filter by type (team | outcomes |
-    initiative | project | member | task | doc | question) for a specific class
-    of resource."""
+    {resources: [{id, title, type}], count}. Filter by type to narrow to one
+    resource class. Valid types are server-defined and can vary by deployment
+    (some entity types have been retired server-side) -- call team_pulse_info()
+    and check resource_types for the current live set before assuming a type
+    exists."""
 
     name = "team_pulse_resources"
     description = (
         "List team-pulse resources. Returns the list envelope "
         "{resources: [{id, title, type}], count}. "
-        "Filter by type (team | outcomes | initiative | project | member | task | doc | question) "
-        "for a specific class of resource. "
+        "Filter by type to narrow to one resource class. Valid types are "
+        "server-defined and can vary by deployment -- call team_pulse_info() "
+        "and check resource_types for the current live set before assuming a "
+        "type exists (an unsupported type returns HTTP 400). "
         "For type=question, pass status (active | archived | all) to select lifecycle "
         "state; the default is active (archived questions are hidden unless you ask). "
         "Pass collection to list resources from a content collection folder."
@@ -327,8 +331,9 @@ class TeamPulseResourcesTool(_LensTool):
                 "type": {
                     "type": "string",
                     "description": (
-                        "Optional resource type filter. "
-                        "Valid types: team, outcomes, initiative, project, member, task, doc, question."
+                        "Optional resource type filter. Valid values are "
+                        "server-specific -- check team_pulse_info()'s resource_types "
+                        "before assuming a type exists."
                     ),
                 },
                 "collection": {
@@ -501,15 +506,17 @@ class TeamPulseDownloadCorpusTool(_LensTool):
 
 class TeamPulseGetTool(_LensTool):
     """Fetch a single resource by full ID. Returns the resource envelope
-    {id, title, type, data, metadata}. Examples of valid IDs:
-    'projects/team-pulse', 'members/jdoe', 'initiatives/onboarding'."""
+    {id, title, type, data, metadata}. ID shape is '<type>/<slug>', e.g.
+    'members/jdoe' or 'questions/higher-level-work'. Available types are
+    server-defined -- see team_pulse_info()'s resource_types."""
 
     name = "team_pulse_get"
     description = (
         "Fetch a single resource by full ID. "
         "Returns the resource envelope {id, title, type, data, metadata}. "
-        "Examples of valid IDs: 'projects/team-pulse', 'members/jdoe', "
-        "'initiatives/onboarding'. "
+        "ID shape is '<type>/<slug>', e.g. 'members/jdoe' or "
+        "'questions/higher-level-work'. Available types are server-defined -- "
+        "see team_pulse_info()'s resource_types. "
         "Returns a 404 envelope if unknown."
     )
 
@@ -554,14 +561,19 @@ class TeamPulseGraphTool(_LensTool):
 class TeamPulseWhoamiTool(_LensTool):
     """Resolve the current caller's identity, for requests phrased as
     'me' / 'my' / 'mine'. Returns how the caller authenticated and whether a
-    per-user identity is available."""
+    per-user identity is available. This is the SERVER-verified team-pulse
+    identity (handle/member_id) -- distinct from team_pulse_status()'s
+    az_identity_hint, which is only the raw, unverified Azure token claim and
+    may not match this."""
 
     name = "team_pulse_whoami"
     description = (
         "Resolve the current caller's identity, for requests phrased as "
         "'me' / 'my' / 'mine' (e.g. 'my projects', 'my record', 'what am I assigned'). "
         "Takes no input. Returns how the caller authenticated and whether a per-user "
-        "identity is available."
+        "identity is available -- this is the SERVER-verified team-pulse identity "
+        "(handle/member_id), distinct from team_pulse_status()'s az_identity_hint "
+        "(the raw, unverified Azure token claim, which may not match)."
     )
 
     async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
@@ -706,16 +718,25 @@ class TeamPulseStatusTool(_LensTool):
     """Return provenance-only client configuration — never any secret.
 
     Lists: base_url, auth_mode ('key' | 'az'), api_app_id, credential_type,
-    forced, resolved.  The response is built from an explicit field allow-list
-    so that a future ClientInfo field that happens to carry a secret (key,
-    token, etc.) cannot leak through a blanket spread.
+    forced, resolved, az_identity_hint (RAW Azure AD token claim, e.g. upn --
+    unverified, display-only, None in key mode). az_identity_hint is NOT
+    team-pulse's resolved identity and may not match it -- call
+    team_pulse_whoami() for the server-verified team member record
+    (handle/member_id). The response is built from an explicit field
+    allow-list so that a future ClientInfo field that happens to carry a
+    secret (key, token, etc.) cannot leak through a blanket spread.
     """
 
     name = "team_pulse_status"
     description = (
         "Report THIS client's locally-resolved config (no network call, no secrets). "
         "Lists: base_url (the team-pulse endpoint you are pointed at), "
-        "auth_mode ('key' | 'az'), credential_type, api_app_id, forced, resolved. "
+        "auth_mode ('key' | 'az'), credential_type, api_app_id, forced, resolved, "
+        "az_identity_hint (the raw Azure AD token's own claim -- e.g. upn -- decoded "
+        "client-side, signature NOT verified, None in key mode). "
+        "az_identity_hint is NOT team-pulse's resolved identity and may not match "
+        "it -- for the server-verified team member record (handle/member_id), use "
+        "team_pulse_whoami instead. "
         "Answers 'which server am I talking to and how am I authenticating?' and "
         "works even when auth is broken or the server is unreachable — use it to "
         "diagnose auth/connection failures. For the SERVER's own documented "
@@ -738,6 +759,7 @@ class TeamPulseStatusTool(_LensTool):
                 "credential_type": info.credential_type,
                 "forced": info.forced,
                 "resolved": info.resolved,
+                "az_identity_hint": info.az_identity_hint,
             },
         )
 
@@ -752,6 +774,15 @@ class TeamPulseConfigureTool:
     successful save it resets the shared provider so the next data-tool call
     rebuilds the client from the freshly-saved config — live in the same
     session, no restart.
+
+    This bundle prefers Azure AD (bearer) auth: this tool only ever sets the
+    URL (+ optional az app id) -- it has no ``key`` parameter and never will,
+    by design. “Already az login'd” + this tool's URL save is the complete
+    setup. A shared API key exists for automation/service scenarios where
+    bearer genuinely isn't viable, but it is configured OUTSIDE this tool
+    (env var or a manual settings.yaml/config.yaml edit) -- deliberately not
+    a first-class option here, so the interactive path always steers toward
+    az.
     """
 
     name = "team_pulse_configure"
@@ -760,7 +791,13 @@ class TeamPulseConfigureTool:
         "~/.amplifier/team-pulse/config.yaml (or $AMPLIFIER_TEAM_PULSE_DIR/config.yaml). "
         "Call this when the user provides their team-pulse endpoint URL, then the data "
         "tools become available immediately — no restart needed. "
-        "(client_id is optional — only set it to override the built-in default.)"
+        "(client_id is optional — only set it to override the built-in default.) "
+        "This bundle prefers Azure AD (bearer) auth -- if you're already az "
+        "login'd, setting the URL here is the entire setup, no key needed. "
+        "This tool has no key parameter by design; a shared API key (for "
+        "automation/service scenarios where bearer isn't viable) is set via "
+        "AMPLIFIER_TEAM_PULSE_KEY instead, and takes precedence over az when "
+        "both are present -- only set one if you specifically need it."
     )
 
     def __init__(self, provider: "_ClientProvider") -> None:
@@ -814,6 +851,19 @@ class TeamPulseConfigureTool:
         }
         if client_id:
             output["saved_client_id"] = client_id
+
+        # Advisory only, changes no behavior: a key present anywhere in the
+        # resolution chain wins over az (key-wins auth inference in
+        # team_pulse_lib's config.py), which can silently override the az/bearer
+        # setup this tool just persisted. Surface that rather than leave it a
+        # silent surprise -- this tool has no key parameter, so the only way a
+        # key got here is an env var (or a settings.yaml override bridged to one).
+        if os.environ.get("AMPLIFIER_TEAM_PULSE_KEY", "").strip():
+            output["note"] = (
+                "AMPLIFIER_TEAM_PULSE_KEY is set in this environment and will take "
+                "precedence over az/bearer (key-wins auth inference). Unset it if "
+                "you want this az configuration to actually be used."
+            )
 
         return ToolResult(success=True, output=output)
 

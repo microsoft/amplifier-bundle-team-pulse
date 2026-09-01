@@ -51,3 +51,4 @@ class ClientInfo:
     credential_type: str  # "api_key" | "azure_default_credential"
     forced: bool  # True iff an explicit force override is active
     resolved: bool  # False before __aenter__, True after credential materialises
+    az_identity_hint: str | None = None  # RAW Azure AD token claim (upn/appid), unverified, NOT team-pulse identity -- see whoami()

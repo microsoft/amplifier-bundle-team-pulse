@@ -125,3 +125,66 @@ def test_build_credential_constructs_default_when_none() -> None:
     from azure.identity.aio import DefaultAzureCredential  # noqa: PLC0415
 
     assert isinstance(result, DefaultAzureCredential)
+
+
+# ---------------------------------------------------------------------------
+# AzCredentialAuth.az_identity_hint — display-only JWT claim peek
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_jwt(claims: dict) -> str:
+    """Build an unsigned-but-well-formed JWT string for decode-only testing."""
+    import base64
+    import json
+
+    def _b64(obj: dict) -> str:
+        return base64.urlsafe_b64encode(json.dumps(obj).encode()).decode().rstrip("=")
+
+    return f"{_b64({'alg': 'none'})}.{_b64(claims)}.fakesig"
+
+
+@pytest.mark.asyncio
+async def test_az_identity_hint_is_none_before_first_headers_call() -> None:
+    auth = AzCredentialAuth(api_app_id="dea6e881", credential=_FakeCred())
+    assert auth.az_identity_hint is None
+
+
+@pytest.mark.asyncio
+async def test_az_identity_hint_decodes_upn_claim() -> None:
+    token = _make_fake_jwt({"upn": "samuel@microsoft.com"})
+    auth = AzCredentialAuth(api_app_id="dea6e881", credential=_FakeCred(token=token))
+    await auth.headers()
+    assert auth.az_identity_hint == "samuel@microsoft.com"
+
+
+@pytest.mark.asyncio
+async def test_az_identity_hint_falls_back_to_preferred_username() -> None:
+    token = _make_fake_jwt({"preferred_username": "alice@example.com"})
+    auth = AzCredentialAuth(api_app_id="dea6e881", credential=_FakeCred(token=token))
+    await auth.headers()
+    assert auth.az_identity_hint == "alice@example.com"
+
+
+@pytest.mark.asyncio
+async def test_az_identity_hint_falls_back_to_appid_for_service_principal() -> None:
+    """Service-principal tokens carry no upn/preferred_username -- appid is the fallback."""
+    token = _make_fake_jwt({"appid": "11111111-2222-3333-4444-555555555555"})
+    auth = AzCredentialAuth(api_app_id="dea6e881", credential=_FakeCred(token=token))
+    await auth.headers()
+    assert auth.az_identity_hint == "11111111-2222-3333-4444-555555555555"
+
+
+@pytest.mark.asyncio
+async def test_az_identity_hint_is_none_for_malformed_token() -> None:
+    """A non-JWT token string must never raise -- az_identity_hint degrades to None."""
+    auth = AzCredentialAuth(api_app_id="dea6e881", credential=_FakeCred(token="not-a-jwt"))
+    await auth.headers()
+    assert auth.az_identity_hint is None
+
+
+@pytest.mark.asyncio
+async def test_az_identity_hint_is_none_when_no_recognised_claims_present() -> None:
+    token = _make_fake_jwt({"sub": "some-opaque-id", "aud": "api://dea6e881"})
+    auth = AzCredentialAuth(api_app_id="dea6e881", credential=_FakeCred(token=token))
+    await auth.headers()
+    assert auth.az_identity_hint is None

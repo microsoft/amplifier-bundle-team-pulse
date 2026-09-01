@@ -403,6 +403,9 @@ class TeamPulseClient:
             credential_type=self._credential_type,
             forced=self._forced,
             resolved=self._resolved,
+            az_identity_hint=(
+                self._auth.az_identity_hint if isinstance(self._auth, AzCredentialAuth) else None
+            ),
         )
 
     async def info(self) -> Any:
