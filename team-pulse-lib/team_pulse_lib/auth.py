@@ -11,6 +11,8 @@ branches on a concrete strategy.  Two implementations are provided:
 
 from __future__ import annotations
 
+import base64
+import json
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -67,6 +69,38 @@ def _build_credential(credential: Any | None = None) -> Any:
     from azure.identity.aio import DefaultAzureCredential  # noqa: PLC0415
 
     return DefaultAzureCredential()
+
+
+# ---------------------------------------------------------------------------
+# JWT claim peek — display-only, no signature verification
+# ---------------------------------------------------------------------------
+
+
+def _decode_bearer_identity_hint(token: str) -> str | None:
+    """Best-effort, display-only read of a JWT's identity claim.
+
+    Decodes the token's payload segment WITHOUT verifying its signature.  This
+    is never a security decision — the token was already minted for us by
+    Azure and already validated by whatever service accepts it; we are only
+    reading a claim back out for human-readable provenance (e.g.
+    ``team_pulse_status()``). Returns the first present claim of ``upn``,
+    ``preferred_username``, ``unique_name``, or ``appid`` (service-principal
+    fallback), or ``None`` if the token isn't a parseable JWT or carries none
+    of those claims.
+    """
+    try:
+        payload_segment = token.split(".")[1]
+        padding = "=" * (-len(payload_segment) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload_segment + padding))
+    except Exception:  # noqa: BLE001 — display-only; never raise on a malformed token
+        return None
+    if not isinstance(claims, dict):
+        return None
+    for claim in ("upn", "preferred_username", "unique_name", "appid"):
+        value = claims.get(claim)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -137,3 +171,17 @@ class AzCredentialAuth:
         self._token = token_str
         self._expires_at = float(access.expires_on)
         return token_str
+
+    @property
+    def identity_hint(self) -> str | None:
+        """Best-effort, display-only identity read from the last-fetched token.
+
+        ``None`` before the first ``headers()`` call, or if the token carries
+        none of the recognised claims (``upn`` / ``preferred_username`` /
+        ``unique_name`` / ``appid``). Never used for authorization -- this is
+        provenance for humans (e.g. ``team_pulse_status()``), not a security
+        decision; the signature is never checked.
+        """
+        if self._token is None:
+            return None
+        return _decode_bearer_identity_hint(self._token)

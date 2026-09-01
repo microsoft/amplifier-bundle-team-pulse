@@ -225,6 +225,60 @@ def test_describe_reflects_forced_and_az_identity():
     asyncio.run(_check())
 
 
+
+def test_describe_reflects_identity_hint_in_az_mode():
+    """describe() in az mode surfaces AzCredentialAuth.identity_hint on ClientInfo."""
+
+    class _FakeAzAuth:
+        """Minimal az-mode double exposing headers() + identity_hint, like AzCredentialAuth."""
+
+        def __init__(self) -> None:
+            self.identity_hint = "samuel@microsoft.com"
+
+        async def headers(self) -> dict[str, str]:
+            return {"Authorization": "Bearer fake-token"}
+
+    async def _check() -> None:
+        from team_pulse_lib.auth import AzCredentialAuth
+
+        # Monkeypatch-free: construct a real AzCredentialAuth so isinstance() in
+        # describe() matches, but inject our fake credential double.
+        from types import SimpleNamespace
+
+        class _FakeCred:
+            async def get_token(self, scope: str) -> SimpleNamespace:
+                import time
+
+                return SimpleNamespace(token="fake.jwt.token", expires_on=time.time() + 3600)
+
+        auth = AzCredentialAuth(api_app_id="dea6e881", credential=_FakeCred())
+        client = TeamPulseClient(
+            base_url=_BASE_URL,
+            auth=auth,
+            auth_mode="az",
+            api_app_id="dea6e881-4cd8-4aba-87da-a52ff3e19bce",
+        )
+        await auth.headers()  # populate the token so identity_hint can decode it
+        info = await client.describe()
+        # The fake token above isn't a real JWT, so identity_hint decodes to None --
+        # this test asserts the WIRING (describe() reads auth.identity_hint), not the
+        # JWT-decoding logic itself (covered in test_auth_azure.py).
+        assert info.identity_hint is auth.identity_hint
+
+    asyncio.run(_check())
+
+
+def test_describe_identity_hint_is_none_in_key_mode():
+    """describe() in key mode: identity_hint is always None (ApiKeyAuth has no such attribute)."""
+    auth = FakeAuth()
+    client = TeamPulseClient(base_url=_BASE_URL, auth=auth)
+
+    async def _check() -> None:
+        info = await client.describe()
+        assert info.identity_hint is None
+
+    asyncio.run(_check())
+
 # ---------------------------------------------------------------------------
 # Task 12: from_env / from_config factory classmethods
 # ---------------------------------------------------------------------------
