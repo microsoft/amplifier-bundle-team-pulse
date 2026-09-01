@@ -304,16 +304,20 @@ class TeamPulseInfoTool(_LensTool):
 
 class TeamPulseResourcesTool(_LensTool):
     """List team-pulse resources. Returns the list envelope
-    {resources: [{id, title, type}], count}. Filter by type (team | outcomes |
-    initiative | project | member | task | doc | question) for a specific class
-    of resource."""
+    {resources: [{id, title, type}], count}. Filter by type to narrow to one
+    resource class. Valid types are server-defined and can vary by deployment
+    (some entity types have been retired server-side) -- call team_pulse_info()
+    and check resource_types for the current live set before assuming a type
+    exists."""
 
     name = "team_pulse_resources"
     description = (
         "List team-pulse resources. Returns the list envelope "
         "{resources: [{id, title, type}], count}. "
-        "Filter by type (team | outcomes | initiative | project | member | task | doc | question) "
-        "for a specific class of resource. "
+        "Filter by type to narrow to one resource class. Valid types are "
+        "server-defined and can vary by deployment -- call team_pulse_info() "
+        "and check resource_types for the current live set before assuming a "
+        "type exists (an unsupported type returns HTTP 400). "
         "For type=question, pass status (active | archived | all) to select lifecycle "
         "state; the default is active (archived questions are hidden unless you ask). "
         "Pass collection to list resources from a content collection folder."
@@ -327,8 +331,9 @@ class TeamPulseResourcesTool(_LensTool):
                 "type": {
                     "type": "string",
                     "description": (
-                        "Optional resource type filter. "
-                        "Valid types: team, outcomes, initiative, project, member, task, doc, question."
+                        "Optional resource type filter. Valid values are "
+                        "server-specific -- check team_pulse_info()'s resource_types "
+                        "before assuming a type exists."
                     ),
                 },
                 "collection": {
@@ -501,15 +506,17 @@ class TeamPulseDownloadCorpusTool(_LensTool):
 
 class TeamPulseGetTool(_LensTool):
     """Fetch a single resource by full ID. Returns the resource envelope
-    {id, title, type, data, metadata}. Examples of valid IDs:
-    'projects/team-pulse', 'members/jdoe', 'initiatives/onboarding'."""
+    {id, title, type, data, metadata}. ID shape is '<type>/<slug>', e.g.
+    'members/jdoe' or 'questions/higher-level-work'. Available types are
+    server-defined -- see team_pulse_info()'s resource_types."""
 
     name = "team_pulse_get"
     description = (
         "Fetch a single resource by full ID. "
         "Returns the resource envelope {id, title, type, data, metadata}. "
-        "Examples of valid IDs: 'projects/team-pulse', 'members/jdoe', "
-        "'initiatives/onboarding'. "
+        "ID shape is '<type>/<slug>', e.g. 'members/jdoe' or "
+        "'questions/higher-level-work'. Available types are server-defined -- "
+        "see team_pulse_info()'s resource_types. "
         "Returns a 404 envelope if unknown."
     )
 
