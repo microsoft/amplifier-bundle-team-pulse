@@ -774,6 +774,15 @@ class TeamPulseConfigureTool:
     successful save it resets the shared provider so the next data-tool call
     rebuilds the client from the freshly-saved config — live in the same
     session, no restart.
+
+    This bundle prefers Azure AD (bearer) auth: this tool only ever sets the
+    URL (+ optional az app id) -- it has no ``key`` parameter and never will,
+    by design. “Already az login'd” + this tool's URL save is the complete
+    setup. A shared API key exists for automation/service scenarios where
+    bearer genuinely isn't viable, but it is configured OUTSIDE this tool
+    (env var or a manual settings.yaml/config.yaml edit) -- deliberately not
+    a first-class option here, so the interactive path always steers toward
+    az.
     """
 
     name = "team_pulse_configure"
@@ -782,7 +791,13 @@ class TeamPulseConfigureTool:
         "~/.amplifier/team-pulse/config.yaml (or $AMPLIFIER_TEAM_PULSE_DIR/config.yaml). "
         "Call this when the user provides their team-pulse endpoint URL, then the data "
         "tools become available immediately — no restart needed. "
-        "(client_id is optional — only set it to override the built-in default.)"
+        "(client_id is optional — only set it to override the built-in default.) "
+        "This bundle prefers Azure AD (bearer) auth -- if you're already az "
+        "login'd, setting the URL here is the entire setup, no key needed. "
+        "This tool has no key parameter by design; a shared API key (for "
+        "automation/service scenarios where bearer isn't viable) is set via "
+        "AMPLIFIER_TEAM_PULSE_KEY instead, and takes precedence over az when "
+        "both are present -- only set one if you specifically need it."
     )
 
     def __init__(self, provider: "_ClientProvider") -> None:
@@ -836,6 +851,19 @@ class TeamPulseConfigureTool:
         }
         if client_id:
             output["saved_client_id"] = client_id
+
+        # Advisory only, changes no behavior: a key present anywhere in the
+        # resolution chain wins over az (key-wins auth inference in
+        # team_pulse_lib's config.py), which can silently override the az/bearer
+        # setup this tool just persisted. Surface that rather than leave it a
+        # silent surprise -- this tool has no key parameter, so the only way a
+        # key got here is an env var (or a settings.yaml override bridged to one).
+        if os.environ.get("AMPLIFIER_TEAM_PULSE_KEY", "").strip():
+            output["note"] = (
+                "AMPLIFIER_TEAM_PULSE_KEY is set in this environment and will take "
+                "precedence over az/bearer (key-wins auth inference). Unset it if "
+                "you want this az configuration to actually be used."
+            )
 
         return ToolResult(success=True, output=output)
 

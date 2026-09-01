@@ -99,41 +99,14 @@ includes:
   - bundle: git+https://github.com/microsoft/amplifier-bundle-team-pulse@main
 ```
 
-### 2. Mint a key
+### 2. Configure the endpoint
 
-Go to your team-pulse admin UI (the deployment owner can point you to it —
-typically `<lens-api-url>/admin` → **"API keys"** panel) and mint a
-personal key. Keys look like `tp_…` and are scoped to read-only API
-access. The raw key is shown **once** at mint time — save it immediately.
+The bundle ships no default endpoint, so you must set the lens API URL to
+your team-pulse deployment. **Recommended: Azure AD (bearer).** If you're
+already `az login`'d, setting the URL is all you need -- no key to mint,
+nothing else to configure.
 
-### 3. Configure your key
-
-The `key` must always be supplied, and the `url` must also be set — the bundle
-ships no default endpoint (see **Set the URL** below). There are two ways to
-provide the key.
-
-#### Option A — `~/.amplifier/settings.yaml` (recommended for daily use)
-
-```yaml
-overrides:
-  tool-team-pulse:
-    config:
-      key: "tp_yourkeyhere"
-```
-
-A paste-ready version of this block lives at
-[`examples/settings.snippet.yaml`](examples/settings.snippet.yaml).
-
-#### Option B — Environment variables (good for CI / scripted setups)
-
-```bash
-export AMPLIFIER_TEAM_PULSE_KEY=tp_yourkeyhere
-```
-
-#### Set the URL (required)
-
-The bundle ships no default endpoint, so you must set the lens API URL to your
-team-pulse deployment, either in settings:
+In settings:
 
 ```yaml
 # ~/.amplifier/settings.yaml
@@ -149,11 +122,51 @@ or via env var:
 export AMPLIFIER_TEAM_PULSE_URL=https://team-pulse.staging.example.com
 ```
 
+or interactively: call `team_pulse_configure` with just the URL -- it never
+asks for a key.
+
+### 3. (Optional) API key -- for automation / service scenarios
+
+A shared API key is the fallback path for when bearer genuinely isn't
+viable -- e.g. CI with no az identity to delegate to. **A key takes
+precedence over az when both are present** (auth mode is inferred
+key-wins), so only set one if you specifically need it.
+
+#### Mint a key
+
+Go to your team-pulse admin UI (the deployment owner can point you to it --
+typically `<lens-api-url>/admin` -> **"API keys"** panel) and mint a
+personal key. Keys look like `tp_...` and are scoped to read-only API
+access. The raw key is shown **once** at mint time -- save it immediately.
+
+#### Configure the key
+
+The interactive `team_pulse_configure` tool does not set a key -- use one
+of these two paths instead.
+
+Settings (recommended for daily use):
+
+```yaml
+overrides:
+  tool-team-pulse:
+    config:
+      key: "tp_..."
+```
+
+A paste-ready version of this block lives at
+[`examples/settings.snippet.yaml`](examples/settings.snippet.yaml).
+
+Environment variable (good for CI / scripted setups):
+
+```bash
+export AMPLIFIER_TEAM_PULSE_KEY=tp_...
+```
+
 #### Precedence
 
-For each field: **settings.yaml (non-empty) → env var → bundle default
-(URL only) → fail.** If neither source provides a value, `mount()` raises
-a `ValueError` that names BOTH paths so you know where to fix it — better
+For each field: **settings.yaml (non-empty) -> env var -> bundle default
+(URL only) -> fail.** If neither source provides a value, `mount()` raises
+a `ValueError` that names BOTH paths so you know where to fix it -- better
 than silent 401s on every call. An empty string in settings counts as
 "not set" so a YAML placeholder can't shadow your env-var setup.
 
@@ -166,7 +179,7 @@ question:
 > what's the team-pulse project?
 ```
 
-The recommended starting move is to activate the mode first — that mounts
+The recommended starting move is to activate the mode first -- that mounts
 the expert agent and reference doc, so delegation works:
 
 ```

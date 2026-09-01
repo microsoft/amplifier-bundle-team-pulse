@@ -47,7 +47,7 @@ in one step.
 
 ## Configuration
 
-Set both the lens API URL (your team-pulse deployment) and your API **key** — the bundle ships no default endpoint:
+Set the lens API URL -- the bundle ships no default endpoint. **Recommended: Azure AD (bearer).** If you're already `az login`'d, that's it -- no key to mint or manage:
 
 ```yaml
 # ~/.amplifier/settings.yaml
@@ -55,17 +55,27 @@ overrides:
   tool-team-pulse:
     config:
       url: "https://<your-team-pulse-endpoint>"
-      key: "tp_yourkeyhere"
 ```
 
 Or via env var:
 
 ```bash
 export AMPLIFIER_TEAM_PULSE_URL=https://<your-team-pulse-endpoint>
-export AMPLIFIER_TEAM_PULSE_KEY=tp_yourkeyhere
 ```
 
-Mint a key at `<url>/admin` → "API keys" panel (shown once — save it). See `README.md` for the full walk-through including URL configuration and precedence rules.
+Or interactively: call `team_pulse_configure` with just the URL -- it never asks for a key.
+
+**API key (automation / service scenarios -- not the default path):** a key takes precedence over az when both are present, so only set one if bearer genuinely isn't viable for you (e.g. CI with no az identity to delegate to). Mint one at `<url>/admin` -> "API keys" panel (shown once -- save it), then:
+
+```yaml
+overrides:
+  tool-team-pulse:
+    config:
+      url: "https://<your-team-pulse-endpoint>"
+      key: "tp_..."
+```
+
+See `README.md` for the full walk-through including precedence rules.
 
 ## Scope (v1)
 
