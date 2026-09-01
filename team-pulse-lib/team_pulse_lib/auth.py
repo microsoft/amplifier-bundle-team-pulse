@@ -173,14 +173,18 @@ class AzCredentialAuth:
         return token_str
 
     @property
-    def identity_hint(self) -> str | None:
-        """Best-effort, display-only identity read from the last-fetched token.
+    def az_identity_hint(self) -> str | None:
+        """Best-effort, display-only AZURE identity read from the last-fetched token.
 
-        ``None`` before the first ``headers()`` call, or if the token carries
-        none of the recognised claims (``upn`` / ``preferred_username`` /
-        ``unique_name`` / ``appid``). Never used for authorization -- this is
-        provenance for humans (e.g. ``team_pulse_status()``), not a security
-        decision; the signature is never checked.
+        This is the raw Azure AD token's own claim -- NOT team-pulse's resolved
+        identity. It may not match (or may never be checked against) whatever
+        ``team_pulse_whoami()`` returns; call that for the server-verified team
+        member record (handle/member_id). ``None`` before the first
+        ``headers()`` call, or if the token carries none of the recognised
+        claims (``upn`` / ``preferred_username`` / ``unique_name`` / ``appid``).
+        Never used for authorization -- this is provenance for humans (e.g.
+        ``team_pulse_status()``), not a security decision; the signature is
+        never checked.
         """
         if self._token is None:
             return None

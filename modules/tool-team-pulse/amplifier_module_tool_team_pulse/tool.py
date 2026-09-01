@@ -561,14 +561,19 @@ class TeamPulseGraphTool(_LensTool):
 class TeamPulseWhoamiTool(_LensTool):
     """Resolve the current caller's identity, for requests phrased as
     'me' / 'my' / 'mine'. Returns how the caller authenticated and whether a
-    per-user identity is available."""
+    per-user identity is available. This is the SERVER-verified team-pulse
+    identity (handle/member_id) -- distinct from team_pulse_status()'s
+    az_identity_hint, which is only the raw, unverified Azure token claim and
+    may not match this."""
 
     name = "team_pulse_whoami"
     description = (
         "Resolve the current caller's identity, for requests phrased as "
         "'me' / 'my' / 'mine' (e.g. 'my projects', 'my record', 'what am I assigned'). "
         "Takes no input. Returns how the caller authenticated and whether a per-user "
-        "identity is available."
+        "identity is available -- this is the SERVER-verified team-pulse identity "
+        "(handle/member_id), distinct from team_pulse_status()'s az_identity_hint "
+        "(the raw, unverified Azure token claim, which may not match)."
     )
 
     async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
@@ -713,10 +718,13 @@ class TeamPulseStatusTool(_LensTool):
     """Return provenance-only client configuration — never any secret.
 
     Lists: base_url, auth_mode ('key' | 'az'), api_app_id, credential_type,
-    forced, resolved, identity_hint (display-only az account; None in key
-    mode).  The response is built from an explicit field allow-list so that a
-    future ClientInfo field that happens to carry a secret (key, token, etc.)
-    cannot leak through a blanket spread.
+    forced, resolved, az_identity_hint (RAW Azure AD token claim, e.g. upn --
+    unverified, display-only, None in key mode). az_identity_hint is NOT
+    team-pulse's resolved identity and may not match it -- call
+    team_pulse_whoami() for the server-verified team member record
+    (handle/member_id). The response is built from an explicit field
+    allow-list so that a future ClientInfo field that happens to carry a
+    secret (key, token, etc.) cannot leak through a blanket spread.
     """
 
     name = "team_pulse_status"
@@ -724,7 +732,11 @@ class TeamPulseStatusTool(_LensTool):
         "Report THIS client's locally-resolved config (no network call, no secrets). "
         "Lists: base_url (the team-pulse endpoint you are pointed at), "
         "auth_mode ('key' | 'az'), credential_type, api_app_id, forced, resolved, "
-        "identity_hint (az account, display-only, None in key mode). "
+        "az_identity_hint (the raw Azure AD token's own claim -- e.g. upn -- decoded "
+        "client-side, signature NOT verified, None in key mode). "
+        "az_identity_hint is NOT team-pulse's resolved identity and may not match "
+        "it -- for the server-verified team member record (handle/member_id), use "
+        "team_pulse_whoami instead. "
         "Answers 'which server am I talking to and how am I authenticating?' and "
         "works even when auth is broken or the server is unreachable — use it to "
         "diagnose auth/connection failures. For the SERVER's own documented "
@@ -747,7 +759,7 @@ class TeamPulseStatusTool(_LensTool):
                 "credential_type": info.credential_type,
                 "forced": info.forced,
                 "resolved": info.resolved,
-                "identity_hint": info.identity_hint,
+                "az_identity_hint": info.az_identity_hint,
             },
         )
 

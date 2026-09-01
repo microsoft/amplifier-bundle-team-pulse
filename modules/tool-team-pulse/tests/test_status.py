@@ -38,7 +38,7 @@ _CLIENT_INFO_AZ = ClientInfo(
     credential_type="azure_default_credential",
     forced=False,
     resolved=True,
-    identity_hint="samuel@microsoft.com",
+    az_identity_hint="samuel@microsoft.com",
 )
 
 # ---------------------------------------------------------------------------
@@ -175,19 +175,19 @@ async def test_repr_has_no_bearer() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Scenario 4: az account identity_hint (display-only, from bundle.md fix 4)
+# Scenario 4: az account az_identity_hint (display-only, from bundle.md fix 4)
 # ---------------------------------------------------------------------------
 
 
-async def test_status_returns_identity_hint_in_az_mode() -> None:
-    """Output must include identity_hint when the underlying ClientInfo carries one."""
+async def test_status_returns_az_identity_hint_in_az_mode() -> None:
+    """Output must include az_identity_hint when the underlying ClientInfo carries one."""
     tool = TeamPulseStatusTool(_make_mock_client())
     result = await tool.execute({})
-    assert result.output["identity_hint"] == "samuel@microsoft.com"
+    assert result.output["az_identity_hint"] == "samuel@microsoft.com"
 
 
-async def test_status_returns_identity_hint_none_in_key_mode() -> None:
-    """Output's identity_hint must be None when ClientInfo carries none (key mode)."""
+async def test_status_returns_az_identity_hint_none_in_key_mode() -> None:
+    """Output's az_identity_hint must be None when ClientInfo carries none (key mode)."""
     key_info = ClientInfo(
         base_url=_BASE_URL,
         auth_mode="key",
@@ -198,4 +198,4 @@ async def test_status_returns_identity_hint_none_in_key_mode() -> None:
     )
     tool = TeamPulseStatusTool(_make_mock_client(info=key_info))
     result = await tool.execute({})
-    assert result.output["identity_hint"] is None
+    assert result.output["az_identity_hint"] is None
