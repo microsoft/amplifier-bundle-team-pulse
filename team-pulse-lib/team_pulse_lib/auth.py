@@ -57,18 +57,24 @@ class ApiKeyAuth:
 
 
 def _build_credential(credential: Any | None = None) -> Any:
-    """Return *credential* verbatim if provided; otherwise construct DefaultAzureCredential.
+    """Return *credential* verbatim if provided; otherwise construct AzureCliCredential.
 
     This factory is the single seam that lets tests inject a fake credential while
-    production code always gets the real DefaultAzureCredential chain.  The raw
-    DefaultAzureCredential is never constructed outside this function so that the
-    resolution chain (env vars, managed identity, az CLI, …) never runs during tests.
+    production code always gets the real AzureCliCredential.  Deliberately narrower than
+    azure-identity's DefaultAzureCredential: that chain ranks ManagedIdentityCredential
+    (and EnvironmentCredential / WorkloadIdentityCredential) ahead of AzureCliCredential,
+    so on any host where those resolve ambiently -- e.g. an Azure VM with a managed
+    identity assigned -- it silently authenticates as the host/service instead of the
+    signed-in developer. This is developer-facing interactive tooling; the human's
+    `az login` session is always what we want by default. A caller that genuinely needs
+    a different credential (managed identity, a service principal, VS Code sign-in, …)
+    injects it explicitly via the `credential` parameter.
     """
     if credential is not None:
         return credential
-    from azure.identity.aio import DefaultAzureCredential  # noqa: PLC0415
+    from azure.identity.aio import AzureCliCredential  # noqa: PLC0415
 
-    return DefaultAzureCredential()
+    return AzureCliCredential()
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +170,9 @@ class AzCredentialAuth:
             access = await self._credential.get_token(self._scope)
         except Exception as exc:  # noqa: BLE001
             raise TeamPulseAuthError(
-                f"No Azure credential available — run `az login` or set AZURE_CLIENT_ID/"
-                f"AZURE_TENANT_ID/AZURE_CLIENT_SECRET. Underlying error: {exc}"
+                f"No Azure credential available — run `az login`. To use a different "
+                f"credential (managed identity, a service principal, etc.), construct "
+                f"AzCredentialAuth(credential=...) explicitly. Underlying error: {exc}"
             ) from exc
         token_str: str = access.token
         self._token = token_str
