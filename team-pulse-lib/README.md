@@ -136,8 +136,9 @@ the provenance — all in one call.
 from team_pulse_lib import TeamPulseClient
 
 # RECOMMENDED — url in code, Azure inferred, app id defaulted.
-# No key supplied -> Azure DefaultAzureCredential. The audience defaults to the
-# shipped DEFAULT_API_APP_ID (owned by the service). Set ONLY the URL.
+# No key supplied -> Azure AzureCliCredential (your `az login` session). The
+# audience defaults to the shipped DEFAULT_API_APP_ID (owned by the service).
+# Set ONLY the URL.
 client = TeamPulseClient.connect(base_url="https://my-deployment.example.com")
 
 # ENV-DRIVEN (12-factor) — what a deployed/headless service uses.

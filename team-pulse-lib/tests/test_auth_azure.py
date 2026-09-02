@@ -118,13 +118,13 @@ def test_build_credential_returns_injected_sentinel() -> None:
 
 
 def test_build_credential_constructs_default_when_none() -> None:
-    """_build_credential(None) must construct a real DefaultAzureCredential (no network)."""
+    """_build_credential(None) must construct a real AzureCliCredential (no network)."""
     result = _build_credential(None)
     assert result is not None
-    # Verify it is actually a DefaultAzureCredential instance (lazy, no network call)
-    from azure.identity.aio import DefaultAzureCredential  # noqa: PLC0415
+    # Verify it is actually an AzureCliCredential instance (lazy, no network call)
+    from azure.identity.aio import AzureCliCredential  # noqa: PLC0415
 
-    assert isinstance(result, DefaultAzureCredential)
+    assert isinstance(result, AzureCliCredential)
 
 
 # ---------------------------------------------------------------------------

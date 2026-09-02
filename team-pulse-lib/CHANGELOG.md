@@ -53,9 +53,19 @@ async TeamPulseClient.describe() -> ClientInfo
 - **Phase 0 initial library lift** — standalone `team-pulse-lib` package extracted from
   the Amplifier bundle into a zero-Amplifier-dependency Python library.  Installs via
   `pip install "team-pulse-lib @ git+https://...#subdirectory=team-pulse-lib"`.
-- **azure-identity `DefaultAzureCredential` auth** — replaces the previous `az` CLI
-  subprocess auth path; supports all standard Azure credential chains (managed identity,
-  workload identity, VS Code, Azure CLI, environment variables) without shell invocation.
+- **azure-identity `AzureCliCredential` auth** — replaces the previous `az` CLI subprocess
+  auth path with the SDK's own `AzureCliCredential` (same underlying mechanism: shells out
+  to `az account get-access-token`, just without hand-rolled subprocess/parsing code).
+  Deliberately narrower than `DefaultAzureCredential`: this tooling targets interactive
+  user machines first, so the developer's `az login` session always wins — no silent
+  fallback to an ambient managed identity, service-principal env var, or workload identity
+  that happens to also be reachable on the host (the exact failure mode that motivated
+  this choice: managed identity silently outranks `az login` on any IMDS-reachable host,
+  e.g. an Azure VM). A caller that genuinely needs a different credential (managed
+  identity, a service principal, VS Code sign-in, …) injects it explicitly via the
+  `credential` parameter threaded through `AzCredentialAuth` and the `from_env` /
+  `from_config` / `from_args` factories — not supported ambiently by design; revisit if a
+  real headless/service use case surfaces.
 - **Key / wins auth inference with force override** — `from_env()` and `from_config()`
   automatically select between API-key and Azure bearer-token auth based on available
   environment variables; callers can force either mode via an explicit parameter.

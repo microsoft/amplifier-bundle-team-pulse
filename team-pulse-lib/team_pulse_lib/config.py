@@ -260,7 +260,7 @@ def from_env(
         ``ValueError`` immediately.
     credential:
         Azure credential to inject (must-fix 3).  ``None`` → lazy
-        ``DefaultAzureCredential`` (constructed only if Azure mode is selected).
+        ``AzureCliCredential`` (constructed only if Azure mode is selected).
     """
     return _build_resolved(
         _resolve_settings(_load_yaml(_user_config_path())),
@@ -349,7 +349,7 @@ def from_config(
         Pin to exactly ``'key'`` or ``'az'``; any other value raises
         ``ValueError`` immediately.
     credential:
-        Azure credential to inject.  ``None`` → lazy ``DefaultAzureCredential``.
+        Azure credential to inject.  ``None`` → lazy ``AzureCliCredential``.
     """
     return _build_resolved(
         _resolve_settings(_load_yaml(Path(path))),
@@ -393,7 +393,7 @@ def from_args(
         Pin to exactly ``'key'`` or ``'az'``; any other value raises
         ``ValueError`` immediately.
     credential:
-        Azure credential to inject.  ``None`` → lazy ``DefaultAzureCredential``.
+        Azure credential to inject.  ``None`` → lazy ``AzureCliCredential``.
     """
     file_dict = _load_yaml(_user_config_path())
     settings = _resolve_settings(file_dict)
