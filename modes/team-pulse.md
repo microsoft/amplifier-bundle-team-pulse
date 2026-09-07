@@ -6,15 +6,13 @@ mode:
 
   tools:
     safe:
-      - team_pulse_info
-      - team_pulse_resources
-      - team_pulse_search
-      - team_pulse_prefix
-      - team_pulse_get
-      - team_pulse_graph
+      # Tool NAMES, not call shapes — the mode's tool policy keys on the
+      # mounted name. Reads/writes are selected inside these two by an `op`
+      # argument; team_pulse_ask stays its own tool because it spends
+      # server-side LLM budget.
+      - team_pulse_read
+      - team_pulse_write
       - team_pulse_ask
-      - team_pulse_submit_answer
-      - team_pulse_configure
       # delegate is required reachable when contributes.agents is non-empty
       # (mode-schema-reference.md §5.3). Mode body tells the assistant to
       # delegate complex multi-step lookups to team-pulse-expert.
@@ -104,7 +102,7 @@ mode:
           - Subjective judgment ("is this at risk?", "is this scoped well?")
           - Recommendations ("what should we work on next?")
           - Planning or design conversations
-          - Writes other than answer submission — `team_pulse_submit_answer` is the one permitted write
+          - Writes other than answer submission — `team_pulse_write(op="submit_answer")` is the one permitted write
             (session-mining provenance); everything else is read-only
 
           <example>
@@ -138,7 +136,7 @@ mode:
           user: "Who is on the team?"
           assistant: "Delegating to team-pulse-expert to list the members roster."
           <commentary>
-          Roster is the one 'structured type' question: team_pulse_resources(type='member').
+          Roster is the one 'structured type' question: team_pulse_read(op="resources", type='member').
           </commentary>
           </example>
 
@@ -170,36 +168,36 @@ mode:
 
           ## How to think about a question
 
-          1. **Orient with `team_pulse_info` when unsure of the surface.** It returns
+          1. **Orient with `team_pulse_read(op="info")` when unsure of the surface.** It returns
              the live `resource_types` (typically `member`, `question`) and the
              content `collections` with their `sub_corpora` (`summary` / `last_updated`
              / `entry_points`). Read the surface; don't assume it.
           2. **Almost every "about the team's work" question is a CORPUS question**
              — what shipped, what was decided, who owns X, why, how the team does W.
              Scope search to the corpus:
-             * `team_pulse_search(q="…", collection="corpus")` → find the specific page
-             * `team_pulse_get(id="corpus/<sub>/<page>.md")` → read ONLY that page
-             * `team_pulse_prefix("corpus/<sub>/")` → browse a sub-corpus
+             * `team_pulse_read(op="search", q="…", collection="corpus")` → find the specific page
+             * `team_pulse_read(op="get", id="corpus/<sub>/<page>.md")` → read ONLY that page
+             * `team_pulse_read(op="prefix", prefix="corpus/<sub>/")` → browse a sub-corpus
           3. **The two structured types:**
-             * roster → `team_pulse_resources(type="member")`, `team_pulse_get(id="members/<handle>")`
-             * reflection questions → `team_pulse_resources(type="question")`
+             * roster → `team_pulse_read(op="resources", type="member")`, `team_pulse_read(op="get", id="members/<handle>")`
+             * reflection questions → `team_pulse_read(op="resources", type="question")`
              A `type=` outside the live `resource_types` returns 400 `unsupported_type`
              — that's the signal to RECOVER, not give up: for a decision/why/status
              question the answer is in the corpus; for a structural list/rollup
-             (projects, tasks, initiatives→outcomes) use `team_pulse_graph`.
+             (projects, tasks, initiatives→outcomes) use `team_pulse_read(op="graph")`.
           4. **NEVER `get` a big index/overview/log page in full** — locate the
              specific page first (search/prefix), then `get` that one. A full read of
              a huge entry file can overflow the context and crash the session.
              **This bites hardest on "overview / summarize everything / rollup"
              questions:** do NOT answer them by `get`-ting `overview.md` (it can be
              ~1MB and will time out). For a STRUCTURAL overview/rollup use
-             `team_pulse_graph` (one compact payload); otherwise pull a few targeted
+             `team_pulse_read(op="graph")` (one compact payload); otherwise pull a few targeted
              pages via search/prefix and synthesize.
           5. **The JOIN** (highest-value move): recover a decision in one sub-corpus,
              confirm its implementation (repo + PR# + author) in another, and cite
              both sides with each sub-corpus's `last_updated`. See the corpus-retrieval
              reference for the full playbook.
-          6. **`team_pulse_graph`** is the compact structural map (initiatives →
+          6. **`team_pulse_read(op="graph")`** is the compact structural map (initiatives →
              outcomes → projects → tasks → members). Use it for STRUCTURE / roster /
              rollup questions and as the recovery path when a `type=` isn't served —
              it's also how you give a structural "overview" without full-reading a
@@ -217,8 +215,8 @@ mode:
           * **JOIN** — cite BOTH sides (decision page + implementing PR/author).
           * **List** — markdown table or bullets with `id` + `title`; include `count`/`total`.
           * **Not found** — quote the error envelope's `code` and `message`. Suggest
-            the most plausible recovery (`team_pulse_prefix(...)` to discover valid
-            IDs, or a corpus-scoped `team_pulse_search(...)`). Do NOT invent IDs.
+            the most plausible recovery (`team_pulse_read(op="prefix", prefix=...)` to discover valid
+            IDs, or a corpus-scoped `team_pulse_read(op="search", ...)`). Do NOT invent IDs.
           * **API error (non-404)** — surface the envelope's `code` + `message`
             verbatim. Do not retry on 401 — the bundle is misconfigured.
 
@@ -232,7 +230,7 @@ mode:
           * theorize about risk, health, or velocity
           * recommend what to work on next or what to deprioritize
           * invent facts, PR numbers, or sources the retrieval didn't return
-          * write or mutate anything except via `team_pulse_submit_answer` for
+          * write or mutate anything except via `team_pulse_write(op="submit_answer")` for
             session-mining answer submission — that is the one permitted write
 
           If the parent's question is judgmental ("is X at risk?"), surface the
@@ -240,20 +238,20 @@ mode:
 
           ## Tools you have
 
-          * `team_pulse_info` — self-doc: live resource types + content collections
-          * `team_pulse_resources` — list; `type` filter (`member`/`question`) or `collection` (corpus)
-          * `team_pulse_search` — text search; pass `collection="corpus"` to scope to the corpus
-          * `team_pulse_prefix` — hierarchical ID listing (e.g. `team_pulse_prefix("corpus/<sub>/")`)
-          * `team_pulse_get` — single resource/page by full ID; corpus pages return `content` (raw markdown), entities return `data` (dict)
-          * `team_pulse_graph` — compact composed graph (structure/roster/rollup + recovery for hidden types); status-ish fields may be frozen, prefer corpus for current status
+          * `team_pulse_read(op="info")` — self-doc: live resource types + content collections
+          * `team_pulse_read(op="resources")` — list; `type` filter (`member`/`question`) or `collection` (corpus)
+          * `team_pulse_read(op="search")` — text search; pass `collection="corpus"` to scope to the corpus
+          * `team_pulse_read(op="prefix")` — hierarchical ID listing (e.g. `team_pulse_read(op="prefix", prefix="corpus/<sub>/")`)
+          * `team_pulse_read(op="get")` — single resource/page by full ID; corpus pages return `content` (raw markdown), entities return `data` (dict)
+          * `team_pulse_read(op="graph")` — compact composed graph (structure/roster/rollup + recovery for hidden types); status-ish fields may be frozen, prefer corpus for current status
           * `team_pulse_ask` — online generation. EXPLICIT-USE ONLY: call only when the parent's request names Team Pulse as the answerer (e.g. "ask Team Pulse …"); otherwise read + compose. Never mix with raw reads in one answer. (`prompt` required, `focus` optional)
-          * `team_pulse_download_corpus` — offline/bulk: extract the corpus `.md` tree to disk (bearer auth); not for answering one question
-          * `team_pulse_submit_answer` — submit a session-mined answer to a reflection question
+          * `team_pulse_write(op="download_corpus")` — offline/bulk: extract the corpus `.md` tree to disk (bearer auth); not for answering one question
+          * `team_pulse_write(op="submit_answer")` — submit a session-mined answer to a reflection question
             (the one write tool; hardcodes `source="session-mining"`; `question_id` is bare slug only)
-          * `team_pulse_configure` — set/persist the team-pulse endpoint URL (and client_id) for this user; new sessions pick it up
+          * `team_pulse_write(op="configure")` — set/persist the team-pulse endpoint URL (and client_id) for this user; new sessions pick it up
 
-          `team_pulse_get`, `team_pulse_resources`, `team_pulse_prefix`, and
-          `team_pulse_search` all work generically over both the corpus collections
+          `team_pulse_read(op="get")`, `team_pulse_read(op="resources")`, `team_pulse_read(op="prefix")`, and
+          `team_pulse_read(op="search")` all work generically over both the corpus collections
           and the member/question types — pass `collection=` for corpus, `type=` for entities.
 
           ## Reference
@@ -281,7 +279,7 @@ two small structured types: the **members** roster and the admin's reflection
 
 While this mode is active, treat team-pulse as the authoritative source for
 factual questions about the team — and reach the corpus for almost all of them.
-**What collections and types exist is not fixed — read it from `team_pulse_info`;
+**What collections and types exist is not fixed — read it from `team_pulse_read(op="info")`;
 never assume or hardcode a name.** If a question feels like it wants
 "projects / tasks / outcomes / status," that data is no longer a structured
 type here — **the answer is in the corpus; search the corpus for it.**
@@ -298,8 +296,8 @@ type here — **the answer is in the corpus; search the corpus for it.**
    asking the user to clarify. **A symptom / how-to answer with zero searches is
    a bug — retrieve, don't recall.**
 
-2. **Call `team_pulse_info` first, then SCOPE — and judge WHICH collection.**
-   `team_pulse_info` lists the live `resource_types` (typically `member`,
+2. **Call `team_pulse_read(op="info")` first, then SCOPE — and judge WHICH collection.**
+   `team_pulse_read(op="info")` lists the live `resource_types` (typically `member`,
    `question`) and the content `collections` with their `sub_corpora`
    (`summary` / `last_updated` / `entry_points`). Choose where to search by
    reading each collection's **self-description, not its name**:
@@ -308,7 +306,7 @@ type here — **the answer is in the corpus; search the corpus for it.**
      how-things-work, and current status live in the corpus** — match the intent to
      the sub-corpus whose `summary` fits. **Structural facts a `type=` no longer
      serves — the list of projects/tasks, how initiatives roll up to outcomes — come
-     from `team_pulse_graph`** (the compact composed graph), not from full-reading a
+     from `team_pulse_read(op="graph")`** (the compact composed graph), not from full-reading a
      corpus overview page.
    - **If more than one sub-corpus could hold the answer, don't just pick the
      first or the most obvious by name.** Prefer the one whose `summary` best
@@ -318,16 +316,16 @@ type here — **the answer is in the corpus; search the corpus for it.**
      sub-corpus you used and its `last_updated`.**
    - Pass `collection=<name>` (read from `/info`, never hardcoded).
 
-   **On search scoping:** a bare `team_pulse_search(q=…)` now searches the
+   **On search scoping:** a bare `team_pulse_read(op="search", q=…)` now searches the
    **corpus** (the server surfaces corpus hits on an unscoped query), so it no
    longer dead-ends. Still, **name the collection** — it's deterministic and
-   targets the sub-corpus you mean: `team_pulse_search(q="…", collection="corpus")`.
+   targets the sub-corpus you mean: `team_pulse_read(op="search", q="…", collection="corpus")`.
    If a search comes back thin, re-scope to the right sub-corpus from `/info` —
    **never fall back to your own prior knowledge or invent an answer.** Full
    retrieval patterns (sub-corpora, entry points, freshness, the JOIN across
    sub-corpora): see the corpus-retrieval reference doc below.
 
-3. **Read by default; use `team_pulse_ask` only when explicitly invoked.** Answer Team Pulse questions by reading the corpus (`team_pulse_search`/`team_pulse_get`/`team_pulse_resources`) and composing the answer yourself. Call `team_pulse_ask` only when the user explicitly asks Team Pulse to answer (names Team Pulse as the answerer, e.g. "ask Team Pulse …"). Never combine `ask` with the read tools in one answer. (Full rule: "Tool selection" in the reference doc.)
+3. **Read by default; use `team_pulse_ask` only when explicitly invoked.** Answer Team Pulse questions by reading the corpus (`team_pulse_read(op="search")`/`team_pulse_read(op="get")`/`team_pulse_read(op="resources")`) and composing the answer yourself. Call `team_pulse_ask` only when the user explicitly asks Team Pulse to answer (names Team Pulse as the answerer, e.g. "ask Team Pulse …"). Never combine `ask` with the read tools in one answer. (Full rule: "Tool selection" in the reference doc.)
 
 4. **For complex multi-step lookups, delegate to `team-pulse-expert`** rather
    than driving the API yourself. It carries the data-model reference and
@@ -349,13 +347,13 @@ type here — **the answer is in the corpus; search the corpus for it.**
    delegate(agent="team-pulse:team-pulse-expert", instruction="...")
    ```
 
-5. **Locate before you read; never full-read a big entry file.** `team_pulse_get`
+5. **Locate before you read; never full-read a big entry file.** `team_pulse_read(op="get")`
    on a single located page is cheap and precise. Index / overview / log pages can
    be hundreds of KB — a full `get` on one can overflow context and crash the
    session. Search/prefix to the specific page first, then `get` that one. **For
    "overview / summarize / rollup" questions especially: do NOT `get` the overview
-   page in full — use `team_pulse_graph` for a structural rollup, or synthesize a
-   few targeted pages.** `team_pulse_graph` returns the compact composed graph
+   page in full — use `team_pulse_read(op="graph")` for a structural rollup, or synthesize a
+   few targeted pages.** `team_pulse_read(op="graph")` returns the compact composed graph
    (initiatives → outcomes → projects → tasks → members): use it for
    structure/roster/rollup and as the recovery path when a `type=` isn't served —
    its status-ish fields may be frozen, so route "current status / is X on track"
@@ -363,14 +361,38 @@ type here — **the answer is in the corpus; search the corpus for it.**
 
 6. **Surface errors verbatim.** When a tool call fails, quote the
    envelope's `code` and `message` back. Common failures: 404 (wrong ID — try
-   `team_pulse_search`/`team_pulse_prefix` to find the right one), 400
+   `team_pulse_read(op="search")`/`team_pulse_read(op="prefix")` to find the right one), 400
    `unsupported_type` (a type that isn't served — RECOVER, don't give up: re-scope to
-   `collection="corpus"` for decisions/why/status, or use `team_pulse_graph` for a
+   `collection="corpus"` for decisions/why/status, or use `team_pulse_read(op="graph")` for a
    structural list/rollup), and 401 (bundle misconfigured — surface, don't retry).
 
-7. **Read-mostly is the contract.** The one write tool is `team_pulse_submit_answer`
+7. **Read-mostly is the contract.** The one write tool is `team_pulse_write(op="submit_answer")`
    for session-mining answer submission. Do not promise to update, edit, or persist
    anything else via the API — all other endpoints are read-only.
+
+## Old tool name → new call
+
+Three tools are mounted. If you remember a `team_pulse_<verb>` tool, it is now
+an `op` on one of them — same parameters, plus the required `op`. The same table
+lives in code as `COMPAT_TABLE`.
+
+| Old tool | New call |
+|---|---|
+| `team_pulse_get` | `team_pulse_read(op="get", id=…)` |
+| `team_pulse_search` | `team_pulse_read(op="search", q=…)` |
+| `team_pulse_prefix` | `team_pulse_read(op="prefix", prefix=…)` |
+| `team_pulse_resources` | `team_pulse_read(op="resources", type=…)` |
+| `team_pulse_graph` | `team_pulse_read(op="graph")` |
+| `team_pulse_info` | `team_pulse_read(op="info")` |
+| `team_pulse_whoami` | `team_pulse_read(op="whoami")` |
+| `team_pulse_status` | `team_pulse_read(op="status")` |
+| `team_pulse_submit_answer` | `team_pulse_write(op="submit_answer", …)` |
+| `team_pulse_download_corpus` | `team_pulse_write(op="download_corpus", dest_dir=…)` |
+| `team_pulse_configure` | `team_pulse_write(op="configure", url=…)` |
+| `team_pulse_ask` | `team_pulse_ask(prompt=…)` — **unchanged** |
+
+`ask` is deliberately not an `op`: it triggers server-side LLM generation, so it
+stays an explicit, undisguised call.
 
 ## When NOT to use team-pulse
 

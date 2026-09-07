@@ -18,15 +18,15 @@ Provides read-only access to the **team-pulse lens API** — the HTTP surface
 exposing a team's **content collections** (mined knowledge: conversation /
 decision wikis and code / repo wikis) plus a small set of structured resources
 (**members** and reflection **questions**). The current shape of the surface is
-self-describing — the agent reads it from `team_pulse_info()`, never a hardcoded
-list.
+self-describing — the agent reads it from `team_pulse_read(op="info")`, never a
+hardcoded list.
 
 ## What's wired in
 
 | Component | Where it lives | When loaded |
 |---|---|---|
-| `tool-team-pulse` (a `team_pulse_*` tool suite: read-only wrappers over resources/search/prefix/get/graph/whoami/info/ask/status/download, plus `submit_answer` for write and `configure` for setup) | `behaviors/team-pulse.yaml` | **Always-on** (~1K tokens) — `contributes.tools` is v1.1 |
-| `team-pulse-expert` agent (definition **inlined** into the mode; discovers resource types live via `team_pulse_info()` rather than a fixed list) | Mounted by `modes/team-pulse.md` via `contributes.agents` | Only while `/team-pulse` mode is active (zero cost otherwise) |
+| `tool-team-pulse` — **three** tools: `team_pulse_read` (op: get/search/prefix/resources/graph/info/whoami/status), `team_pulse_write` (op: submit_answer/download_corpus/configure), and `team_pulse_ask` (kept separate: it spends server-side LLM budget) | `behaviors/team-pulse.yaml` | **Always-on** (~4K chars of rendered schema) — `contributes.tools` is v1.1 |
+| `team-pulse-expert` agent (definition **inlined** into the mode; discovers resource types live via `team_pulse_read(op="info")` rather than a fixed list) | Mounted by `modes/team-pulse.md` via `contributes.agents` | Only while `/team-pulse` mode is active (zero cost otherwise) |
 | `context/using-team-pulse.md` reference doc | Mounted by `modes/team-pulse.md` via `contributes.context` | Only while `/team-pulse` mode is active (zero cost otherwise) |
 | `/team-pulse` mode | `modes/team-pulse.md`, discovered via the modes bundle | Activate with `/mode team-pulse` |
 
@@ -63,7 +63,7 @@ Or via env var:
 export AMPLIFIER_TEAM_PULSE_URL=https://<your-team-pulse-endpoint>
 ```
 
-Or interactively: call `team_pulse_configure` with just the URL -- it never asks for a key.
+Or interactively: call `team_pulse_write(op="configure", url=...)` -- it never asks for a key.
 
 **API key (automation / service scenarios -- not the default path):** a key takes precedence over az when both are present, so only set one if bearer genuinely isn't viable for you (e.g. CI with no az identity to delegate to). Mint one at `<url>/admin` -> "API keys" panel (shown once -- save it), then:
 
@@ -79,9 +79,9 @@ See `README.md` for the full walk-through including precedence rules.
 
 ## Scope (v1)
 
-Read-mostly lookup with one write tool. The agent answers factual questions
-sourced from the lens API. The single write tool (`team_pulse_submit_answer`)
-records AI-generated answers to reflection questions on behalf of a specified
+Read-mostly lookup with one remote write. The agent answers factual questions
+sourced from the lens API. The single remote mutation
+(`team_pulse_write(op="submit_answer")`) records AI-generated answers to reflection questions on behalf of a specified
 user — session-mining provenance, the sole mutation path. The bundle does NOT
 theorize, recommend, score risk, or apply rubrics — that's deferred to a future
 "thinking-partner" agent.

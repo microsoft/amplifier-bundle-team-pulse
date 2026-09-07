@@ -204,19 +204,24 @@ the Phase-0 additions; the read methods were lifted from the prior client unchan
 
 ### Amplifier tools (thin shim → library method → endpoint)
 
-| Tool | Library method | HTTP call |
+The bundle mounts **three** tools; `team_pulse_read` and `team_pulse_write`
+select a library method with an `op` argument, and `team_pulse_ask` stays its
+own tool because it triggers server-side LLM spend.
+
+| Tool call | Library method | HTTP call |
 |------|----------------|-----------|
-| `team_pulse_info` | `info()` | `GET /api/lens/info` |
-| `team_pulse_resources` | `resources()` | `GET /api/lens/resources` |
-| `team_pulse_search` | `search()` | `GET /api/lens/resources/search` |
-| `team_pulse_prefix` | `prefix()` | `GET /api/lens/resources/prefix/{prefix}` |
-| `team_pulse_get` | `get()` | `GET /api/lens/resources/{id}` |
-| `team_pulse_graph` | `graph()` | `GET /api/lens/graph` |
-| `team_pulse_whoami` | `whoami()` | `GET /api/lens/me` |
-| `team_pulse_ask` | `ask()` | `POST /api/lens/ask` |
-| `team_pulse_submit_answer` | `upload_answer()` | `POST /api/lens/answers` |
-| **`team_pulse_status`** *(new)* | `describe()` | *(local — no network, no secrets)* |
-| `team_pulse_configure` | `save_config()` | *(local — writes `~/.amplifier/team-pulse/config.yaml`)* |
+| `team_pulse_read(op="info")` | `info()` | `GET /api/lens/info` |
+| `team_pulse_read(op="resources")` | `resources()` | `GET /api/lens/resources` |
+| `team_pulse_read(op="search")` | `search()` | `GET /api/lens/resources/search` |
+| `team_pulse_read(op="prefix")` | `prefix()` | `GET /api/lens/resources/prefix/{prefix}` |
+| `team_pulse_read(op="get")` | `get()` | `GET /api/lens/resources/{id}` |
+| `team_pulse_read(op="graph")` | `graph()` | `GET /api/lens/graph` |
+| `team_pulse_read(op="whoami")` | `whoami()` | `GET /api/lens/me` |
+| `team_pulse_read(op="status")` | `describe()` | *(local — no network, no secrets)* |
+| `team_pulse_write(op="submit_answer")` | `upload_answer()` | `POST /api/lens/answers` |
+| `team_pulse_write(op="download_corpus")` | `download_corpus()` | `GET /api/lens/corpus.zip` |
+| `team_pulse_write(op="configure")` | `save_config()` | *(local — writes `~/.amplifier/team-pulse/config.yaml`)* |
+| `team_pulse_ask(prompt=…)` | `ask()` | `POST /api/lens/ask` |
 
 ---
 

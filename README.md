@@ -8,7 +8,7 @@ Gives an Amplifier session three things:
 
 | Component | What it is | How you use it |
 |---|---|---|
-| **Tools** (`team_pulse_*`) | Six tool-callable wrappers over the lens API endpoints | Always available when the bundle is loaded |
+| **Tools** (`team_pulse_read` / `team_pulse_write` / `team_pulse_ask`) | Three tool-callable wrappers over the lens API; `read` and `write` select an endpoint with an `op` argument | Always available when the bundle is loaded |
 | **Mode** (`/team-pulse`) | A context overlay that biases the assistant toward consulting team-pulse first | Activate with `/mode team-pulse` |
 | **Agent** (`team-pulse-expert`) | A read-only lookup specialist that knows the data model + endpoint patterns | Contributed by `/team-pulse` mode — available for delegation **while the mode is active** |
 
@@ -19,7 +19,7 @@ context (the agent + reference doc):
 
 | Piece | When loaded | Per-session cost when `/team-pulse` is off |
 |---|---|---|
-| Six `team_pulse_*` tools | Always (when bundle is included) | ~1K tokens of tool schemas in system prompt |
+| Three `team_pulse_*` tools | Always (when bundle is included) | ~4K chars (~1K tokens) of tool schemas in system prompt |
 | `team-pulse-expert` agent | Only while `/team-pulse` mode is active | **0 tokens** — not in the delegate catalog |
 | `context/using-team-pulse.md` reference doc | Only while `/team-pulse` mode is active | **0 tokens** — not injected |
 
@@ -31,7 +31,7 @@ activate the mode first:
 > who's working on the onboarding initiative?
 ```
 
-With the mode off, you can still call the `team_pulse_*` tools directly,
+With the mode off, you can still call the three `team_pulse_*` tools directly,
 but the assistant won't have the agent or the data-model reference loaded
 — it'll have to figure things out from tool descriptions alone.
 
@@ -122,7 +122,7 @@ or via env var:
 export AMPLIFIER_TEAM_PULSE_URL=https://team-pulse.staging.example.com
 ```
 
-or interactively: call `team_pulse_configure` with just the URL -- it never
+or interactively: call `team_pulse_write(op="configure", url=...)` -- it never
 asks for a key.
 
 ### 3. (Optional) API key -- for automation / service scenarios
@@ -141,8 +141,8 @@ access. The raw key is shown **once** at mint time -- save it immediately.
 
 #### Configure the key
 
-The interactive `team_pulse_configure` tool does not set a key -- use one
-of these two paths instead.
+The interactive `team_pulse_write(op="configure")` call does not set a key --
+use one of these two paths instead.
 
 Settings (recommended for daily use):
 
@@ -198,10 +198,10 @@ expert agent won't be available for delegation.
 The `team-pulse-expert` agent is deliberately scoped to **read-only
 factual lookup** in v1. It will:
 
-* Fetch a specific resource (`team_pulse_get`)
-* List resources of a type (`team_pulse_resources`)
-* Search fuzzily (`team_pulse_search`)
-* Walk the graph for cross-resource relationships (`team_pulse_graph`)
+* Fetch a specific resource (`team_pulse_read(op="get", id=...)`)
+* List resources of a type (`team_pulse_read(op="resources", type=...)`)
+* Search fuzzily (`team_pulse_read(op="search", q=...)`)
+* Walk the graph for cross-resource relationships (`team_pulse_read(op="graph")`)
 * Surface API errors verbatim (preserves the lens API's `{code, message, status}` envelope)
 
 It will NOT:
@@ -248,14 +248,20 @@ team-pulse context — only the ~1K tokens of tool schemas.
 
 ## The lens API
 
-| Endpoint | Tool | Notes |
+| Endpoint | Call | Notes |
 |---|---|---|
-| `GET /api/lens/info` | `team_pulse_info` | Self-doc — resource types, capabilities, endpoint catalog |
-| `GET /api/lens/resources` | `team_pulse_resources` | List, optional `type` filter, `view` = `effective` or `raw` |
-| `GET /api/lens/resources/search` | `team_pulse_search` | Naive text search, default limit 50, max 200 |
-| `GET /api/lens/resources/prefix/{p}` | `team_pulse_prefix` | Hierarchical ID listing |
-| `GET /api/lens/resources/{id}` | `team_pulse_get` | Fetch one resource |
-| `GET /api/lens/graph` | `team_pulse_graph` | Full composed entity graph + reverse edges — **large** |
+| `GET /api/lens/info` | `team_pulse_read(op="info")` | Self-doc — resource types, capabilities, endpoint catalog |
+| `GET /api/lens/resources` | `team_pulse_read(op="resources")` | List, optional `type` / `collection` / `status` filters |
+| `GET /api/lens/resources/search` | `team_pulse_read(op="search", q=...)` | Naive text search, default limit 50, max 200 |
+| `GET /api/lens/resources/prefix/{p}` | `team_pulse_read(op="prefix", prefix=...)` | Hierarchical ID listing |
+| `GET /api/lens/resources/{id}` | `team_pulse_read(op="get", id=...)` | Fetch one resource |
+| `GET /api/lens/graph` | `team_pulse_read(op="graph")` | Full composed entity graph + reverse edges — **large** |
+| `GET /api/lens/whoami` | `team_pulse_read(op="whoami")` | Server-verified caller identity |
+| — (local, no network) | `team_pulse_read(op="status")` | This client's resolved config; no secrets |
+| `POST /api/lens/answers` | `team_pulse_write(op="submit_answer", ...)` | Record a session-mined answer |
+| `GET /api/lens/corpus.zip` | `team_pulse_write(op="download_corpus", dest_dir=...)` | Bulk corpus pull; per-user az bearer auth only (a shared key is refused 403) |
+| — (local, no network) | `team_pulse_write(op="configure", url=...)` | Persist this user's endpoint URL |
+| `POST /api/lens/ask` | `team_pulse_ask(prompt=...)` | **Server-side LLM generation** — kept as its own tool, never an `op`. Call only when the user explicitly directs Team Pulse to answer. |
 
 Resource types: `team`, `outcomes`, `initiative`, `project`, `member`,
 `task`, `doc`. Single-resource envelope: `{id, title, type, data,
@@ -263,7 +269,7 @@ metadata}` for entities, or `{id, title, type, content, metadata}` for
 docs — switch on `type`. List envelope: `{resources: [{id, title, type}],
 count}`. Error envelope: `{error: {code, message, status}}`.
 
-The six tools above work generically over every resource type, including
+The read ops above work generically over every resource type, including
 `doc`. `doc` IDs are hierarchical paths like
 `docs/handbook/onboarding/onboarding.md` and surface the team-pulse vault's
 markdown design docs. Doc bodies come back as raw markdown in the
