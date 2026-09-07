@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from amplifier_module_tool_team_pulse import TeamPulseDownloadCorpusTool
 from amplifier_module_tool_team_pulse.tool import (
-    _DATA_TOOL_CLASSES,
+    _OP_HANDLER_CLASSES,
 )
 from amplifier_module_tool_team_pulse.tool import (
     TeamPulseDownloadCorpusTool as _ToolFromModule,
@@ -69,8 +69,9 @@ def test_tool_metadata_and_schema() -> None:
     assert schema["additionalProperties"] is False
 
 
-def test_registered_in_data_tool_classes() -> None:
-    assert _ToolFromModule in _DATA_TOOL_CLASSES
+def test_registered_as_an_op_handler() -> None:
+    """Reached as team_pulse_write(op='download_corpus'); no longer mounted alone."""
+    assert _ToolFromModule in _OP_HANDLER_CLASSES
 
 
 async def test_written_zero_with_folder_adds_discovery_note() -> None:

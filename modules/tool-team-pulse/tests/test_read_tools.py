@@ -16,7 +16,7 @@ from team_pulse_lib.errors import TeamPulseConnectionError
 
 # Step 2: these imports FAIL with ImportError until the classes are added to tool.py
 from amplifier_module_tool_team_pulse.tool import (
-    _TOOL_CLASSES,
+    _MOUNTED_TOOL_CLASSES,
     TeamPulseAskTool,
     TeamPulseGetTool,
     TeamPulseGraphTool,
@@ -86,7 +86,12 @@ async def test_info_wraps_lib_info_success() -> None:
 
 
 async def test_resources_forwards_type_and_collection() -> None:
-    """resources: forwards type and collection keyword args to client.resources()."""
+    """resources: forwards type, collection and status keyword args to client.resources().
+
+    NOTE: this assertion was stale on main — it omitted ``status`` and so failed
+    against the shipped code, which has passed ``status=input.get("status")``
+    since the question-lifecycle filter landed. Corrected here.
+    """
     mock_client = _client()
     mock_client.resources.return_value = {"count": 0, "resources": []}
     provider = _make_provider(mock_client)
@@ -95,7 +100,7 @@ async def test_resources_forwards_type_and_collection() -> None:
     result = await tool.execute({"type": "project", "collection": "docs"})
 
     assert result.success is True
-    mock_client.resources.assert_awaited_once_with(type="project", collection="docs")
+    mock_client.resources.assert_awaited_once_with(type="project", collection="docs", status=None)
 
 
 # ---------------------------------------------------------------------------
@@ -310,9 +315,9 @@ def test_ask_tool_input_schema_prompt_required_focus_optional() -> None:
     assert schema.get("additionalProperties") is False
 
 
-def test_ask_tool_in_tool_classes() -> None:
-    """ask tool: TeamPulseAskTool is in _TOOL_CLASSES."""
-    assert TeamPulseAskTool in _TOOL_CLASSES
+def test_ask_tool_is_mounted_in_its_own_right() -> None:
+    """ask is NOT consolidated behind an op enum — it stays a mounted tool."""
+    assert TeamPulseAskTool in _MOUNTED_TOOL_CLASSES
 
 
 def test_ask_tool_description_prefers_read_tools() -> None:

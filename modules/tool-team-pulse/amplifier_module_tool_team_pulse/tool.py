@@ -7,8 +7,22 @@ This module is the team-pulse Amplifier tool module.  It wraps ``team_pulse_lib`
 (the standalone async client library) and exposes its capabilities as Amplifier
 tools via ``mount()``.
 
-All concrete tool classes are implemented here.  See ``_DATA_TOOL_CLASSES`` for
-the ordered list of data tools and ``mount()`` for the Amplifier entry point.
+THREE tools are mounted (see :data:`_MOUNTED_TOOL_CLASSES`):
+
+* ``team_pulse_read``  — every read, selected by an ``op`` enum.
+* ``team_pulse_write`` — every write / local action, selected by an ``op`` enum.
+* ``team_pulse_ask``   — UNCHANGED and deliberately its own tool: it triggers
+  server-side LLM spend, so it must stay an explicit, undisguised call and is
+  never folded behind an ``op`` enum.
+
+The per-op classes (``TeamPulseGetTool``, ``TeamPulseSearchTool``, …) are
+retained as INTERNAL op handlers — they hold the request/response logic and its
+tests — and are listed in :data:`_OP_HANDLER_CLASSES`.  They are no longer
+mounted individually, so their ``description`` strings no longer reach any
+model; they now serve as per-op documentation for maintainers.
+
+:data:`COMPAT_TABLE` maps every formerly-separate tool name to exactly one
+``(new_tool, op)`` pair.
 """
 
 from __future__ import annotations
@@ -868,21 +882,17 @@ class TeamPulseConfigureTool:
         return ToolResult(success=True, output=output)
 
 
-# --- Provider-backed mount() ---------------------------------------------------
+# --- Consolidated tool surface -------------------------------------------
 #
-# Task 6: rewrite mount() to be provider-backed with no resolution logic.
-# Config resolution is delegated to team_pulse_lib via an env bridge (_make_build).
-# No inline config-validation helpers or hardcoded defaults — lib owns all of that.
-#
-# Public identifiers added here:
-#   _DATA_TOOL_CLASSES  — ordered list of data tool classes (excludes configure)
-#   _SETTINGS_TO_ENV    — (settings_key, env_var) mapping for config bridging
-#   _make_build(config) — factory that returns the lazy async _build coroutine
-#   mount(coordinator, config=None) — Amplifier entry point
+# Twelve separately-mounted team_pulse_* tools became THREE.  The op handlers
+# above are unchanged and unmounted; the two dispatchers below select one by an
+# `op` enum, and team_pulse_ask stays exactly as it was.
 
-#: Ordered list of data tool classes mounted after TeamPulseConfigureTool.
-#: Does NOT include TeamPulseConfigureTool (always mounted first, separately).
-_DATA_TOOL_CLASSES: list[type[_LensTool]] = [
+
+#: Ordered list of the internal op-handler classes.  None of these is mounted
+#: directly any more — they are reached through team_pulse_read /
+#: team_pulse_write, or (for ask) mounted as itself.
+_OP_HANDLER_CLASSES: list[type] = [
     TeamPulseInfoTool,
     TeamPulseWhoamiTool,
     TeamPulseResourcesTool,
@@ -890,14 +900,258 @@ _DATA_TOOL_CLASSES: list[type[_LensTool]] = [
     TeamPulsePrefixTool,
     TeamPulseGetTool,
     TeamPulseGraphTool,
+    TeamPulseStatusTool,
     TeamPulseDownloadCorpusTool,
     TeamPulseSubmitAnswerTool,
-    TeamPulseAskTool,
-    TeamPulseStatusTool,
+    TeamPulseConfigureTool,
 ]
 
-#: Alias kept for backward compatibility with tests; mount() uses _DATA_TOOL_CLASSES.
-_TOOL_CLASSES = _DATA_TOOL_CLASSES
+#: COMPATIBILITY TABLE — former tool name -> (new tool name, op).
+#:
+#: Every one of the twelve formerly-separate tool names maps to exactly one
+#: (tool, op) pair, so existing call sites and documentation referencing an old
+#: name can be corrected mechanically.  ``team_pulse_ask`` maps to itself: it is
+#: NOT consolidated, because it triggers server-side LLM spend and must remain
+#: an explicit, undisguised call.
+COMPAT_TABLE: dict[str, tuple[str, str]] = {
+    # reads
+    "team_pulse_get": ("team_pulse_read", "get"),
+    "team_pulse_search": ("team_pulse_read", "search"),
+    "team_pulse_info": ("team_pulse_read", "info"),
+    "team_pulse_status": ("team_pulse_read", "status"),
+    "team_pulse_prefix": ("team_pulse_read", "prefix"),
+    "team_pulse_resources": ("team_pulse_read", "resources"),
+    "team_pulse_whoami": ("team_pulse_read", "whoami"),
+    "team_pulse_graph": ("team_pulse_read", "graph"),
+    # writes / local actions
+    "team_pulse_download_corpus": ("team_pulse_write", "download_corpus"),
+    "team_pulse_submit_answer": ("team_pulse_write", "submit_answer"),
+    "team_pulse_configure": ("team_pulse_write", "configure"),
+    # unchanged — its own tool, on purpose
+    "team_pulse_ask": ("team_pulse_ask", "ask"),
+}
+
+
+class _OpTool:
+    """Base for the op-dispatching tools (``team_pulse_read`` / ``_write``).
+
+    Subclasses declare :attr:`name`, :attr:`description`, :attr:`_OPS` (an
+    ordered mapping ``op -> (handler class, required input keys)``) and override
+    :attr:`input_schema`.
+
+    One handler instance per op is built at construction time, all sharing the
+    single provider passed in, so dispatch is a dict lookup and the cached
+    client is shared exactly as it was when each op was its own mounted tool.
+    """
+
+    name: str = ""
+    description: str = ""
+    _OPS: dict[str, tuple[type, tuple[str, ...]]] = {}
+
+    def __init__(self, provider: Any) -> None:
+        # Named _client to match _LensTool, so tests that inspect a mounted
+        # tool's provider work the same way for dispatchers and handlers.
+        self._client = provider
+        self._handlers: dict[str, Any] = {op: cls(provider) for op, (cls, _req) in self._OPS.items()}
+
+    @property
+    def input_schema(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}, "additionalProperties": False}
+
+    def _invalid(self, message: str) -> "ToolResult":
+        return ToolResult(
+            success=False,
+            error={"code": "invalid_argument", "message": message, "status": 400},
+        )
+
+    async def execute(self, input: dict[str, Any]) -> "ToolResult":
+        """Validate ``op`` plus its required keys, then delegate to the handler."""
+        payload = dict(input or {})
+        op = payload.pop("op", None)
+        entry = self._OPS.get(op) if isinstance(op, str) else None
+        if entry is None:
+            return self._invalid(f"{self.name}: unknown op {op!r}. Valid ops: {', '.join(self._OPS)}.")
+        missing = [key for key in entry[1] if payload.get(key) in (None, "")]
+        if missing:
+            return self._invalid(f"{self.name}(op={op!r}) requires: {', '.join(missing)}.")
+        return await self._handlers[op].execute(payload)
+
+
+class TeamPulseReadTool(_OpTool):
+    """Every team-pulse read, behind one ``op`` enum."""
+
+    name = "team_pulse_read"
+    description = (
+        "Read Team Pulse data; `op` picks the read. "
+        "get: one resource by full id '<type>/<slug>'. "
+        "search: substring search. "
+        "prefix: every id under a path prefix, e.g. 'projects'. "
+        "resources: list, optional type/collection filter. "
+        "graph: whole entity graph — large, cross-resource questions only. "
+        "info: the SERVER's self-description (resource_types, collections); check "
+        "it before assuming a type exists. "
+        "whoami: server-verified caller identity, for 'me'/'my'. "
+        "status: THIS client's local config — no network, no secrets, works when "
+        "auth is broken."
+    )
+
+    _OPS = {
+        "get": (TeamPulseGetTool, ("id",)),
+        "search": (TeamPulseSearchTool, ("q",)),
+        "prefix": (TeamPulsePrefixTool, ("prefix",)),
+        "resources": (TeamPulseResourcesTool, ()),
+        "graph": (TeamPulseGraphTool, ()),
+        "info": (TeamPulseInfoTool, ()),
+        "whoami": (TeamPulseWhoamiTool, ()),
+        "status": (TeamPulseStatusTool, ()),
+    }
+
+    @property
+    def input_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "op": {
+                    "type": "string",
+                    "enum": list(self._OPS),
+                    "description": "Which read to perform.",
+                },
+                "id": {
+                    "type": "string",
+                    "description": "op=get: full id, e.g. 'members/jdoe'.",
+                },
+                "q": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "op=search: query string.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200,
+                    "description": "op=search: max results (default 50).",
+                },
+                "prefix": {
+                    "type": "string",
+                    "description": "op=prefix: id prefix, e.g. 'projects'.",
+                },
+                "type": {
+                    "type": "string",
+                    "description": "op=resources: type filter; unknown -> 400.",
+                },
+                "collection": {
+                    "type": "string",
+                    "description": "op=search|resources: collection, e.g. 'docs'.",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "archived", "all"],
+                    "description": "op=resources, type=question: default active.",
+                },
+            },
+            "required": ["op"],
+            "additionalProperties": False,
+        }
+
+
+class TeamPulseWriteTool(_OpTool):
+    """Every team-pulse write / local action, behind one ``op`` enum."""
+
+    name = "team_pulse_write"
+    description = (
+        "Team Pulse writes and local setup; `op` picks the action. "
+        "submit_answer: record a session-mined answer to a reflection question for "
+        "a github user; question_id is the BARE slug, never 'questions/<slug>'. "
+        "download_corpus: bulk-fetch the corpus to a local dir; returns a summary, "
+        "never page bodies — for in-session Q&A use team_pulse_read. Needs per-user "
+        "az bearer auth; a shared key is refused (403). "
+        "configure: persist this user's endpoint URL; effective immediately. No key "
+        "parameter by design — AMPLIFIER_TEAM_PULSE_KEY outranks az."
+    )
+
+    _OPS = {
+        "submit_answer": (
+            TeamPulseSubmitAnswerTool,
+            ("question_id", "user_id", "answer", "generated_at"),
+        ),
+        "download_corpus": (TeamPulseDownloadCorpusTool, ("dest_dir",)),
+        "configure": (TeamPulseConfigureTool, ("url",)),
+    }
+
+    @property
+    def input_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "op": {
+                    "type": "string",
+                    "enum": list(self._OPS),
+                    "description": "Which action to perform.",
+                },
+                "question_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]*$",
+                    "description": "op=submit_answer: bare question slug.",
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "op=submit_answer: github username.",
+                },
+                "answer": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "op=submit_answer: the answer body.",
+                },
+                "generated_at": {
+                    "type": "string",
+                    "description": "op=submit_answer: ISO-8601 timestamp.",
+                },
+                "metadata": {
+                    "type": "object",
+                    "description": "op=submit_answer: opaque bag; provenance as source_session_ids.",
+                },
+                "dest_dir": {
+                    "type": "string",
+                    "description": "op=download_corpus: local dir to extract into.",
+                },
+                "folder": {
+                    "type": "string",
+                    "description": "op=download_corpus: sub-corpus narrow; names from op=info.",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "op=configure: endpoint URL (https:// required).",
+                },
+                "client_id": {
+                    "type": "string",
+                    "description": "op=configure: optional Azure AD app id.",
+                },
+            },
+            "required": ["op"],
+            "additionalProperties": False,
+        }
+
+
+# --- Provider-backed mount() ---------------------------------------------------
+#
+# mount() is provider-backed with no resolution logic.  Config resolution is
+# delegated to team_pulse_lib via an env bridge (_make_build).  No inline
+# config-validation helpers or hardcoded defaults — lib owns all of that.
+#
+# Public identifiers here:
+#   _OP_HANDLER_CLASSES     — the internal op handlers (not mounted)
+#   COMPAT_TABLE           — old tool name -> (new tool name, op)
+#   _MOUNTED_TOOL_CLASSES   — the exactly-three mounted tool classes
+#   _SETTINGS_TO_ENV        — (settings_key, env_var) mapping for config bridging
+#   _make_build(config)     — factory that returns the lazy async _build coroutine
+#   mount(coordinator, config=None) — Amplifier entry point
+
+#: The exactly-three tool classes mount() registers, in mount order.
+_MOUNTED_TOOL_CLASSES: list[type] = [
+    TeamPulseReadTool,
+    TeamPulseWriteTool,
+    TeamPulseAskTool,
+]
 
 #: Ordered mapping of (settings_key, env_var) pairs used by _make_build.
 #: client_id is an alias for api_app_id — both target AMPLIFIER_TEAM_PULSE_API_APP_ID.
@@ -935,18 +1189,17 @@ def _make_build(config: dict[str, Any]) -> "Callable[[], Awaitable[TeamPulseClie
 
 
 async def mount(coordinator: Any, config: dict[str, Any] | None = None) -> None:
-    """Mount team-pulse tools onto the Amplifier coordinator.
+    """Mount the three team-pulse tools onto the Amplifier coordinator.
 
     Builds a single shared :class:`_ClientProvider` whose lazy ``_build``
-    bridges settings into env and then calls ``TeamPulseClient.from_env()``.
+    bridges settings into env and then calls ``TeamPulseClient.from_env()``, and
+    mounts every class in :data:`_MOUNTED_TOOL_CLASSES` against it:
+    ``team_pulse_read``, ``team_pulse_write``, ``team_pulse_ask``.
 
-    Mount order:
-      1. :class:`TeamPulseConfigureTool` — always first.
-      2. All classes in :data:`_DATA_TOOL_CLASSES` — in listed order.
-
-    A missing URL is NOT an error at mount time.  It surfaces as a
-    ``not_configured`` :class:`ToolResult` at the first call to any data tool,
-    prompting the agent to call ``team_pulse_configure``.
+    ``team_pulse_write(op='configure')`` is always reachable, even when
+    team-pulse is otherwise unconfigured.  A missing URL is NOT an error at
+    mount time — it surfaces as a ``not_configured`` :class:`ToolResult` at the
+    first call that needs the network.
 
     Args:
         coordinator: Amplifier coordinator; must have an async
@@ -956,13 +1209,8 @@ async def mount(coordinator: Any, config: dict[str, Any] | None = None) -> None:
     config = config or {}
     provider = _ClientProvider(build=_make_build(config))
 
-    # Configure tool is always first — always mounted, even when unconfigured.
-    configure_tool = TeamPulseConfigureTool(provider)
-    await coordinator.mount("tools", configure_tool, name=configure_tool.name)
-
-    # Mount all data tools sharing the same provider.
-    for cls in _DATA_TOOL_CLASSES:
+    for cls in _MOUNTED_TOOL_CLASSES:
         tool = cls(provider)
         await coordinator.mount("tools", tool, name=tool.name)
 
-    logger.info("team-pulse: mounted %d tools", 1 + len(_DATA_TOOL_CLASSES))
+    logger.info("team-pulse: mounted %d tools", len(_MOUNTED_TOOL_CLASSES))

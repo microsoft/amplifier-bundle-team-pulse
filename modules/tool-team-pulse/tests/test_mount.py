@@ -1,13 +1,13 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""Tests for provider-backed mount() — Task 6.
+"""Tests for provider-backed mount().
 
-Verifies the new mount() contract:
-  - configure tool is always first
-  - mounts configure + all _DATA_TOOL_CLASSES (10 data tools)
-  - all 10 expected names present, including team_pulse_status
-  - all tools share one provider object (single id)
+Verifies the mount() contract after the 12 -> 3 consolidation:
+  - mounts exactly the classes in _MOUNTED_TOOL_CLASSES, in order
+  - the three names are team_pulse_read / team_pulse_write / team_pulse_ask
+  - configure is reachable as team_pulse_write(op='configure'), even unconfigured
+  - all mounted tools share one provider object (single id)
   - mount bridges settings into env, then calls TeamPulseClient.from_env(force=None)
 """
 
@@ -20,8 +20,11 @@ import pytest
 from team_pulse_lib import TeamPulseClient
 
 from amplifier_module_tool_team_pulse.tool import (
-    _DATA_TOOL_CLASSES,
+    _MOUNTED_TOOL_CLASSES,
+    TeamPulseAskTool,
     TeamPulseConfigureTool,
+    TeamPulseReadTool,
+    TeamPulseWriteTool,
     mount,
 )
 
@@ -37,55 +40,48 @@ class _FakeCoordinator:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: configure tool always first
+# Test 1: mounts exactly _MOUNTED_TOOL_CLASSES, in order
 # ---------------------------------------------------------------------------
 
 
-async def test_configure_tool_always_first() -> None:
-    """mounted[0] is 'team_pulse_configure' and an instance of TeamPulseConfigureTool."""
+async def test_mounts_exactly_the_declared_classes_in_order() -> None:
     coord = _FakeCoordinator()
     await mount(coord, {})
-    assert coord.mounted[0][2] == "team_pulse_configure"
-    assert isinstance(coord.mounted[0][1], TeamPulseConfigureTool)
+    assert len(coord.mounted) == len(_MOUNTED_TOOL_CLASSES) == 3
+    assert [type(tool) for _, tool, _ in coord.mounted] == _MOUNTED_TOOL_CLASSES
+    assert _MOUNTED_TOOL_CLASSES == [
+        TeamPulseReadTool,
+        TeamPulseWriteTool,
+        TeamPulseAskTool,
+    ]
 
 
 # ---------------------------------------------------------------------------
-# Test 2: mounts configure + all data tools
+# Test 2: the three names
 # ---------------------------------------------------------------------------
 
-
-async def test_mounts_configure_plus_all_data_tools() -> None:
-    """Total mounted == 1 (configure) + len(_DATA_TOOL_CLASSES)."""
-    coord = _FakeCoordinator()
-    await mount(coord, {})
-    assert len(coord.mounted) == 1 + len(_DATA_TOOL_CLASSES)
+_EXPECTED_NAMES = {"team_pulse_read", "team_pulse_write", "team_pulse_ask"}
 
 
-# ---------------------------------------------------------------------------
-# Test 3: all 10 expected names present including team_pulse_status
-# ---------------------------------------------------------------------------
-
-_EXPECTED_NAMES = {
-    "team_pulse_configure",
-    "team_pulse_info",
-    "team_pulse_whoami",
-    "team_pulse_resources",
-    "team_pulse_search",
-    "team_pulse_prefix",
-    "team_pulse_get",
-    "team_pulse_graph",
-    "team_pulse_submit_answer",
-    "team_pulse_ask",
-    "team_pulse_status",
-}
-
-
-async def test_all_expected_names_present_including_status() -> None:
-    """All 10 tool names are mounted, including team_pulse_status."""
+async def test_the_three_expected_names_are_mounted() -> None:
     coord = _FakeCoordinator()
     await mount(coord, {})
     names = {name for _, _, name in coord.mounted}
     assert names == _EXPECTED_NAMES
+
+
+# ---------------------------------------------------------------------------
+# Test 3: configure stays reachable even when team-pulse is unconfigured
+# ---------------------------------------------------------------------------
+
+
+async def test_configure_reachable_as_a_write_op() -> None:
+    """The bootstrap path survives consolidation: write(op='configure')."""
+    coord = _FakeCoordinator()
+    await mount(coord, {})
+    write = next(tool for _, tool, name in coord.mounted if name == "team_pulse_write")
+    assert "configure" in write._OPS  # noqa: SLF001
+    assert isinstance(write._handlers["configure"], TeamPulseConfigureTool)  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------
@@ -94,18 +90,19 @@ async def test_all_expected_names_present_including_status() -> None:
 
 
 async def test_all_tools_share_one_provider() -> None:
-    """Configure tool and all data tools reference the exact same provider object."""
+    """Every mounted tool — and every op handler beneath it — shares one provider."""
     coord = _FakeCoordinator()
     await mount(coord, {})
 
-    # Configure tool stores the provider as _provider
-    configure_provider = coord.mounted[0][1]._provider  # noqa: SLF001
+    shared = coord.mounted[0][1]._client  # noqa: SLF001
 
-    # Data tools store the shared provider as _client (legacy attr name in _LensTool)
-    for _, tool, name in coord.mounted[1:]:
-        assert tool._client is configure_provider, (  # noqa: SLF001
-            f"{name}: expected shared provider (id={id(configure_provider)}), got id={id(tool._client)}"  # noqa: SLF001
+    for _, tool, name in coord.mounted:
+        assert tool._client is shared, (  # noqa: SLF001
+            f"{name}: expected shared provider (id={id(shared)}), got id={id(tool._client)}"  # noqa: SLF001
         )
+        for op, handler in getattr(tool, "_handlers", {}).items():
+            provider = getattr(handler, "_client", None) or getattr(handler, "_provider", None)  # noqa: SLF001
+            assert provider is shared, f"{name}(op={op}): handler does not share the provider"
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +164,7 @@ async def test_mount_bridges_settings_to_env_and_calls_from_env(
     await mount(coord, config)
 
     # Trigger the lazy build by awaiting the shared provider
-    provider = coord.mounted[0][1]._provider  # noqa: SLF001
+    provider = coord.mounted[0][1]._client  # noqa: SLF001
     await provider.client()
 
     assert captured["url"] == "https://x.example.com"
