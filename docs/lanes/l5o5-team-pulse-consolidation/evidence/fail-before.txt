@@ -1,0 +1,38 @@
+# FAIL-BEFORE evidence (module source at origin/main, tests from this branch)
+
+$ git stash push -- modules/tool-team-pulse/amplifier_module_tool_team_pulse   # revert module to main
+$ git log --oneline -1
+875c288 fix(auth): stop DefaultAzureCredential from silently preferring managed identity over az login (#40)
+
+## 1. mount() registers 12 tools, not 3
+$ uv run python -c '<mount onto a fake coordinator, print names>'
+mounted 12 tools:
+   team_pulse_configure
+   team_pulse_info
+   team_pulse_whoami
+   team_pulse_resources
+   team_pulse_search
+   team_pulse_prefix
+   team_pulse_get
+   team_pulse_graph
+   team_pulse_download_corpus
+   team_pulse_submit_answer
+   team_pulse_ask
+   team_pulse_status
+
+assert len == 3 -> FAIL (got 12)
+
+## 2. the fail-before test itself
+$ uv run pytest tests/test_consolidated_surface.py
+==================================== ERRORS ====================================
+_____________ ERROR collecting tests/test_consolidated_surface.py ______________
+ImportError while importing test module '/home/bkrabach/dev/hw-model-performance/lanes/l5o5-team-pulse-consolidation/amplifier-bundle-team-pulse/modules/tool-team-pulse/tests/test_consolidated_surface.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+tests/test_consolidated_surface.py:39: in <module>
+    from amplifier_module_tool_team_pulse.tool import (
+E   ImportError: cannot import name 'COMPAT_TABLE' from 'amplifier_module_tool_team_pulse.tool' (/home/bkrabach/dev/hw-model-performance/lanes/l5o5-team-pulse-consolidation/amplifier-bundle-team-pulse/modules/tool-team-pulse/amplifier_module_tool_team_pulse/tool.py)
+=========================== short test summary info ============================
+ERROR tests/test_consolidated_surface.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 0.07s ===============================

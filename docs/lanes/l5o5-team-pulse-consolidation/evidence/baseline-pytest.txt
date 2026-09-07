@@ -1,0 +1,10 @@
+# Baseline test suite at origin/main (875c288) — BEFORE this branch
+$ cd modules/tool-team-pulse && uv run pytest
+============================= test session starts ==============================
+=================================== FAILURES ===================================
+=========================== short test summary info ============================
+FAILED tests/test_init_exports.py::test_all_contains_exactly_11_tool_classes_and_mount
+FAILED tests/test_init_exports.py::test_all_has_exactly_12_names - AssertionE...
+FAILED tests/test_mount.py::test_all_expected_names_present_including_status
+FAILED tests/test_read_tools.py::test_resources_forwards_type_and_collection
+========================= 4 failed, 72 passed in 0.20s =========================

@@ -1,0 +1,147 @@
+[
+  {
+    "name": "team_pulse_ask",
+    "description": "`ask` is server-side ONLINE GENERATION: a Team Pulse LLM composes a bounded answer over current team data. PREFER THE READ TOOLS BY DEFAULT (team_pulse_info / team_pulse_search / team_pulse_get / team_pulse_resources): answer Team Pulse questions by reading the corpus and composing the response yourself — they are cheaper, return full-fidelity data, and you are already an LLM that can synthesize from raw reads. Call team_pulse_ask ONLY when the user explicitly directs Team Pulse to answer.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "The question to ask Team Pulse.",
+          "minLength": 1
+        },
+        "focus": {
+          "type": "string",
+          "description": "Optional lens resource id for orientation (e.g. 'projects/team-pulse')."
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_read",
+    "description": "Read Team Pulse data; `op` picks the read. get: one resource by full id '<type>/<slug>'. search: substring search. prefix: every id under a path prefix, e.g. 'projects'. resources: list, optional type/collection filter. graph: whole entity graph — large, cross-resource questions only. info: the SERVER's self-description (resource_types, collections); check it before assuming a type exists. whoami: server-verified caller identity, for 'me'/'my'. status: THIS client's local config — no network, no secrets, works when auth is broken.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "get",
+            "search",
+            "prefix",
+            "resources",
+            "graph",
+            "info",
+            "whoami",
+            "status"
+          ],
+          "description": "Which read to perform."
+        },
+        "id": {
+          "type": "string",
+          "description": "op=get: full id, e.g. 'members/jdoe'."
+        },
+        "q": {
+          "type": "string",
+          "minLength": 1,
+          "description": "op=search: query string."
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "description": "op=search: max results (default 50)."
+        },
+        "prefix": {
+          "type": "string",
+          "description": "op=prefix: id prefix, e.g. 'projects'."
+        },
+        "type": {
+          "type": "string",
+          "description": "op=resources: type filter; unknown -> 400."
+        },
+        "collection": {
+          "type": "string",
+          "description": "op=search|resources: collection, e.g. 'docs'."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "archived",
+            "all"
+          ],
+          "description": "op=resources, type=question: default active."
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_write",
+    "description": "Team Pulse writes and local setup; `op` picks the action. submit_answer: record a session-mined answer to a reflection question for a github user; question_id is the BARE slug, never 'questions/<slug>'. download_corpus: bulk-fetch the corpus to a local dir; returns a summary, never page bodies — for in-session Q&A use team_pulse_read. Needs per-user az bearer auth; a shared key is refused (403). configure: persist this user's endpoint URL; effective immediately. No key parameter by design — AMPLIFIER_TEAM_PULSE_KEY outranks az.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "submit_answer",
+            "download_corpus",
+            "configure"
+          ],
+          "description": "Which action to perform."
+        },
+        "question_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "op=submit_answer: bare question slug."
+        },
+        "user_id": {
+          "type": "string",
+          "description": "op=submit_answer: github username."
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "op=submit_answer: the answer body."
+        },
+        "generated_at": {
+          "type": "string",
+          "description": "op=submit_answer: ISO-8601 timestamp."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "op=submit_answer: opaque bag; provenance as source_session_ids."
+        },
+        "dest_dir": {
+          "type": "string",
+          "description": "op=download_corpus: local dir to extract into."
+        },
+        "folder": {
+          "type": "string",
+          "description": "op=download_corpus: sub-corpus narrow; names from op=info."
+        },
+        "url": {
+          "type": "string",
+          "description": "op=configure: endpoint URL (https:// required)."
+        },
+        "client_id": {
+          "type": "string",
+          "description": "op=configure: optional Azure AD app id."
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false
+    }
+  }
+]
