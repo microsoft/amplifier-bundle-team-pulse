@@ -2,6 +2,9 @@
 
 Work item: `model_performance-bceb` — *Lean head: team-pulse 12 tool descriptions plus awareness*.
 
+Draft PR: <https://github.com/microsoft/amplifier-bundle-team-pulse/pull/41> (**do not merge**).
+Discovered work filed: `model_performance-q10g` (4 stale tests failing on main, pre-existing).
+
 ## What this changes
 
 The 12 `team_pulse_*` tool descriptions are always-on context: every one is
