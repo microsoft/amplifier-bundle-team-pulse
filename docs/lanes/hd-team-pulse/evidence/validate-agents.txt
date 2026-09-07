@@ -1,0 +1,25 @@
+validate-agents (@foundation:recipes/validate-agents.yaml v1.8.0) -- DETERMINISTIC PHASES ONLY
+==============================================================================================
+
+This lane's budget is $0 / no API calls, so the recipe's LLM-backed phases
+(quality-classification, description-quality-check, tool-access-analysis,
+synthesize-report) were NOT run. The three pure-Python phases -- the only ones
+a change to this repo could affect -- were extracted from the recipe verbatim
+and run against this checkout.
+
+$ environment-check
+{"phase": "environment", "python_version": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]", "yaml_available": true, "repo_path": "/home/bkrabach/dev/hw-model-performance/lanes/hd-team-pulse/amplifier-bundle-team-pulse", "repo_exists": true, "errors": [], "repo_path_resolved": "/home/bkrabach/dev/hw-model-performance/lanes/hd-team-pulse/amplifier-bundle-team-pulse"}
+
+$ agent-discovery
+{"phase": "discovery", "repo_path": "/home/bkrabach/dev/hw-model-performance/lanes/hd-team-pulse/amplifier-bundle-team-pulse", "agents_found": [], "total_count": 0, "search_locations": [], "location_counts": {}, "scan_patterns": ["<repo>/**/agents/*.md", "<repo>/agents/*.md"], "excluded_parts": [".git", ".venv", "docs", "node_modules", "test-fixtures", "tests"], "classifier": "frontmatter declares a top-level `meta:` key (docs/AGENT_AUTHORING.md)", "classifier_mode": "yaml", "candidates_scanned": 0, "non_agents_found": [], "non_agent_count": 0, "non_agent_reasons": {}, "errors": [{"type": "no_agents", "message": "No agent files found in repository (0 candidate file(s) scanned, 0 classified as non-agents)", "searched": ["<repo>/**/agents/*.md", "<repo>/agents/*.md"], "excluded_parts": [".git", ".venv", "docs", "node_modules", "test-fixtures", "tests"], "classifier": "frontmatter declares a top-level `meta:` key (docs/AGENT_AUTHORING.md)"}]}
+
+$ structural-validation
+{"phase": "structural", "skipped": false, "agents": [], "summary": {"total": 0, "passed": 0, "errors": 0, "warnings": 0}}
+
+VERDICT: structural summary total=0 errors=0 warnings=0 -- PASS, no agent-definition defects.
+
+This repository ships NO 'agents/*.md' file: its one agent (team-pulse-expert)
+is INLINED into modes/team-pulse.md's contributes.agents block, a documented v1
+workaround (see modes/team-pulse.md and behaviors/team-pulse.yaml). Discovery
+therefore reports no_agents -- a pre-existing structural fact of this repo,
+identical before and after this change, which touches no agent file at all.

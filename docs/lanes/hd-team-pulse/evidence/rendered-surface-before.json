@@ -1,0 +1,230 @@
+[
+  {
+    "name": "team_pulse_ask",
+    "description": "`ask` is server-side ONLINE GENERATION: a Team Pulse LLM composes a bounded answer over current team data. PREFER THE READ TOOLS BY DEFAULT (team_pulse_info / team_pulse_search / team_pulse_get / team_pulse_resources): answer Team Pulse questions by reading the corpus and composing the response yourself — they are cheaper, return full-fidelity data, and you are already an LLM that can synthesize from raw reads. Call team_pulse_ask ONLY when the user explicitly directs Team Pulse to answer.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "The question to ask Team Pulse.",
+          "minLength": 1
+        },
+        "focus": {
+          "type": "string",
+          "description": "Optional lens resource id for orientation (e.g. 'projects/team-pulse')."
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_configure",
+    "description": "Set and persist the team-pulse endpoint URL for this user. Saved to ~/.amplifier/team-pulse/config.yaml (or $AMPLIFIER_TEAM_PULSE_DIR/config.yaml). Call this when the user provides their team-pulse endpoint URL, then the data tools become available immediately — no restart needed. (client_id is optional — only set it to override the built-in default.) This bundle prefers Azure AD (bearer) auth -- if you're already az login'd, setting the URL here is the entire setup, no key needed. This tool has no key parameter by design; a shared API key (for automation/service scenarios where bearer isn't viable) is set via AMPLIFIER_TEAM_PULSE_KEY instead, and takes precedence over az when both are present -- only set one if you specifically need it.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Team-pulse endpoint URL (must start with https://)."
+        },
+        "client_id": {
+          "type": "string",
+          "description": "Azure AD application (client) ID (optional; used for az auth mode). Omit to use the built-in default."
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_download_corpus",
+    "description": "Bulk-download the whole mined corpus (all sub-corpora the server exposes) to a LOCAL DIRECTORY, for running your own agents / embeddings / grep over it offline. Fetches the corpus as a zip in one call and extracts the .md tree under dest_dir. Returns a SUMMARY {written, dest_dir, folder, bytes} — NOT the page bodies (pulling hundreds of docs into context would crash the session). This is the offline BULK path; for in-session Q&A use team_pulse_search / team_pulse_get instead. Requires per-user BEARER (az) auth — a shared API key is refused (403), because a bulk pull must be attributable to a member. Optionally pass folder to narrow to ONE sub-corpus; the sub-corpus names are instance-specific — discover them from team_pulse_info() (collections[].sub_corpora), never assume them.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "dest_dir": {
+          "type": "string",
+          "description": "Local directory to extract the corpus into (created if absent)."
+        },
+        "folder": {
+          "type": "string",
+          "description": "Optional sub-corpus narrow — a sub-corpus id-prefix. Names vary per instance; get them from team_pulse_info() (collections[].sub_corpora). Omit for the whole corpus. An unknown name simply yields an empty result."
+        }
+      },
+      "required": [
+        "dest_dir"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_get",
+    "description": "Fetch a single resource by full ID. Returns the resource envelope {id, title, type, data, metadata}. ID shape is '<type>/<slug>', e.g. 'members/jdoe' or 'questions/higher-level-work'. Available types are server-defined -- see team_pulse_info()'s resource_types. Returns a 404 envelope if unknown.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Full resource ID (e.g. 'projects/team-pulse')."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_graph",
+    "description": "Fetch the full composed entity graph — every resource of every type plus computed reverse edges, in one response. Large payload: prefer team_pulse_resources / team_pulse_get for targeted lookups. Use this when you need cross-resource relationships (who's on what, which projects roll up to which initiative, etc.).",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_info",
+    "description": "Describe the SERVER (remote; requires network + working auth). Fetches the team-pulse lens API's own self-description: API name/version, the auth scheme the server documents, capabilities, the endpoint catalog, and content collections. Use to discover what the API exposes. NOTE: this is the server's view of itself - it does NOT report which URL you are pointed at or how you authenticated; for your client's resolved config use team_pulse_status.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_prefix",
+    "description": "List resources whose ID starts with the given path prefix. Example: prefix='projects' returns all projects. Cheaper and more precise than team_pulse_search for hierarchical lookups.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "description": "ID prefix, e.g. 'projects' or 'members'."
+        }
+      },
+      "required": [
+        "prefix"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_resources",
+    "description": "List team-pulse resources. Returns the list envelope {resources: [{id, title, type}], count}. Filter by type to narrow to one resource class. Valid types are server-defined and can vary by deployment -- call team_pulse_info() and check resource_types for the current live set before assuming a type exists (an unsupported type returns HTTP 400). For type=question, pass status (active | archived | all) to select lifecycle state; the default is active (archived questions are hidden unless you ask). Pass collection to list resources from a content collection folder.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Optional resource type filter. Valid values are server-specific -- check team_pulse_info()'s resource_types before assuming a type exists."
+        },
+        "collection": {
+          "type": "string",
+          "description": "Optional content collection name, e.g. 'docs'."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "archived",
+            "all"
+          ],
+          "default": "active",
+          "description": "Lifecycle filter; applies ONLY to type=question (silently ignored for other types). 'active' (default) hides archived questions; 'archived' returns only archived; 'all' returns both. Invalid values -> 400."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_search",
+    "description": "Naive text search across all team-pulse resources. Returns the same list envelope as team_pulse_resources. Default limit 50, max 200. Search is substring-matchy — for precise lookups by ID prefer team_pulse_get or team_pulse_prefix.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": "string",
+          "description": "Search query string.",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Max results (1–200, default 50).",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "collection": {
+          "type": "string",
+          "description": "Optional content collection name, e.g. 'docs'."
+        }
+      },
+      "required": [
+        "q"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_status",
+    "description": "Report THIS client's locally-resolved config (no network call, no secrets). Lists: base_url (the team-pulse endpoint you are pointed at), auth_mode ('key' | 'az'), credential_type, api_app_id, forced, resolved, az_identity_hint (the raw Azure AD token's own claim -- e.g. upn -- decoded client-side, signature NOT verified, None in key mode). az_identity_hint is NOT team-pulse's resolved identity and may not match it -- for the server-verified team member record (handle/member_id), use team_pulse_whoami instead. Answers 'which server am I talking to and how am I authenticating?' and works even when auth is broken or the server is unreachable — use it to diagnose auth/connection failures. For the SERVER's own documented capabilities and endpoints, use team_pulse_info instead.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_submit_answer",
+    "description": "Submit a session-mined answer to a team-pulse reflection question. Use this to record an AI-generated answer attributed to a specific user, synthesized from their Context Intelligence sessions.\n\nquestion_id is the BARE SLUG (e.g. 'higher-level-work'), NOT the hierarchical 'questions/<slug>' form — strip the 'questions/' prefix if you have it. Discover valid slugs via team_pulse_resources(type='question') and use the data.id field (or strip the prefix from the list-envelope id).\n\nuser_id is the github username of the person the answer is about; the bundle records it as a github-namespaced identity (the API stores it verbatim and resolves to a team member at read time). metadata is an optional opaque bag — session provenance (source_session_ids), timing, and any other context live INSIDE it. generated_at is the ISO-8601 timestamp when the answer was generated.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Bare question slug (e.g. 'higher-level-work'). Hierarchical 'questions/<slug>' is rejected."
+        },
+        "user_id": {
+          "type": "string",
+          "description": "GitHub username of the person the answer is about."
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The answer body."
+        },
+        "generated_at": {
+          "type": "string",
+          "description": "ISO-8601 timestamp when the answer was generated."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Optional opaque bag stored verbatim by the server. Session provenance lives here as source_session_ids (array of Context Intelligence session IDs); may also carry timing, model, confidence, etc."
+        }
+      },
+      "required": [
+        "question_id",
+        "user_id",
+        "answer",
+        "generated_at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "team_pulse_whoami",
+    "description": "Resolve the current caller's identity, for requests phrased as 'me' / 'my' / 'mine' (e.g. 'my projects', 'my record', 'what am I assigned'). Takes no input. Returns how the caller authenticated and whether a per-user identity is available -- this is the SERVER-verified team-pulse identity (handle/member_id), distinct from team_pulse_status()'s az_identity_hint (the raw, unverified Azure token claim, which may not match).",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  }
+]
