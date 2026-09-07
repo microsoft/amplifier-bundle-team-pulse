@@ -12,7 +12,7 @@ skill and this doc points into it.
 
 There are two ways to answer a Team Pulse question. Use **one path per answer** — never both.
 
-**Default — read the corpus and compose yourself.** For every Team Pulse question (what's the team doing, who owns what, how things relate, orient me to an area, what did we decide about X), use the read tools and write the answer yourself, with citations: `team_pulse_info` (discover collections/types) -> `team_pulse_search` (find the specific page/entity) -> `team_pulse_get` (read that one page/entity, full fidelity) -> `team_pulse_resources`/`team_pulse_prefix` (list/browse). You are the synthesizer.
+**Default — read the corpus and compose yourself.** For every Team Pulse question (what's the team doing, who owns what, how things relate, orient me to an area, what did we decide about X), use the read tools and write the answer yourself, with citations: `team_pulse_read(op="info")` (discover collections/types) -> `team_pulse_read(op="search")` (find the specific page/entity) -> `team_pulse_read(op="get")` (read that one page/entity, full fidelity) -> `team_pulse_read(op="resources")`/`team_pulse_read(op="prefix")` (list/browse). You are the synthesizer.
 
 **Exception — `team_pulse_ask` (server-side synthesis): explicit request only.** The rule (not a phrasebook): call `ask` only when the user **names Team Pulse as the answerer** — they are asking the service to answer, not asking you a question that happens to be about the team. Example: "ask Team Pulse how we're tracking on the migration." Phrasing varies; the signal is **who they are asking**.
 
@@ -31,26 +31,26 @@ about the team's work — what shipped, who owns something, what was decided, ho
 to do something the team has done before — **the corpus is where you look.**
 
 **The surface is self-describing — read it, don't recall it.** Call
-`team_pulse_info()` first to learn the *live* set of resource types and content
+`team_pulse_read(op="info")` first to learn the *live* set of resource types and content
 collections. Do not answer "what data does Team Pulse have?" from this document
 or from memory — the answer is whatever `/info` returns right now, and it changes
 as the team's data evolves. Never hardcode a type or collection name.
 
 ### The current surface (read it from `/info`, don't assume it)
 
-`team_pulse_info()` returns the authoritative shape. Today it typically returns:
+`team_pulse_read(op="info")` returns the authoritative shape. Today it typically returns:
 
 | Kind | What it is | How to reach it |
 |---|---|---|
 | Content collections | The corpus (one or more sub-corpora — e.g. conversation/decision wikis and code/repo wikis). The primary current-knowledge surface. | `search`/`resources`/`prefix`/`get` scoped with `collection=<name>` — names from `/info`. See `corpus-retrieval.md`. |
-| `member` | A person on the team. | `team_pulse_resources(type="member")`, `team_pulse_get(id="members/<handle>")` |
-| `question` | Admin-authored reflection prompts the team is currently being asked. | `team_pulse_resources(type="question")`, `team_pulse_get(id="questions/<slug>")` |
+| `member` | A person on the team. | `team_pulse_read(op="resources", type="member")`, `team_pulse_read(op="get", id="members/<handle>")` |
+| `question` | Admin-authored reflection prompts the team is currently being asked. | `team_pulse_read(op="resources", type="question")`, `team_pulse_read(op="get", id="questions/<slug>")` |
 
-`team_pulse_info().resource_types` is the list of valid `type=` values right now
+`team_pulse_read(op="info").resource_types` is the list of valid `type=` values right now
 (e.g. `["member", "question"]`). A `type=` outside that list returns **400
 `unsupported_type`** — that's by design, not an error to route around: if you
 find yourself wanting a type that isn't listed, the answer lives in the corpus,
-not a structured type. `team_pulse_info().collections` lists the content
+not a structured type. `team_pulse_read(op="info").collections` lists the content
 collections; pass those names as `collection=`.
 
 ### The list / single-resource envelopes
@@ -67,7 +67,7 @@ Single resource:
 }
 ```
 
-List (cheap — ID/title/type only; get the full body with `team_pulse_get`):
+List (cheap — ID/title/type only; get the full body with `team_pulse_read(op="get")`):
 
 ```json
 {
@@ -97,16 +97,25 @@ Every error path uses this shape. The tool layer surfaces it verbatim in
 
 ## Endpoint reference (mapped to tools)
 
+Three tools are mounted. `team_pulse_read` and `team_pulse_write` each take a
+required `op`; every other argument is unchanged from when each op was its own
+tool. `team_pulse_ask` is **not** an op — it stays a separate tool because it
+spends server-side LLM budget, so calling it is always a deliberate act.
+
 | Tool | Wraps | When to use |
 |---|---|---|
-| `team_pulse_info()` | `GET /api/lens/info` | **First call to orient.** Returns the live catalog of resource types + content collections. Answer "what can Team Pulse tell me?" by CALLING this, not from memory. |
-| `team_pulse_search(q=…, collection=…)` | `GET /api/lens/resources/search` | Find the specific corpus page (or member/question) matching a term. A bare query searches the corpus; pass `collection` to scope deterministically. |
-| `team_pulse_prefix(prefix)` | `GET /api/lens/resources/prefix/{p}` | Hierarchical listing — e.g. `prefix("members")`, or drill a corpus sub-corpus `prefix("corpus/<sub>/")`. |
-| `team_pulse_resources(type=… \| collection=…)` | `GET /api/lens/resources` | List members/questions (`type=`) or a corpus collection (`collection=`). Read `count`/`total`; page with `limit`/`offset`. |
-| `team_pulse_get(id=…)` | `GET /api/lens/resources/{id}` | Fetch one resource/page by full ID. Do NOT `get` a giant index/overview/log page in full — locate the specific page first (see `corpus-retrieval.md` §2). |
-| `team_pulse_graph()` | `GET /api/lens/graph` | Raw structural entity graph + reverse edges. **May include frozen/aging data — not a current-state source.** Large payload; use sparingly for structural relationships, and prefer the corpus for what's actually happening. |
+| `team_pulse_read(op="info")` | `GET /api/lens/info` | **First call to orient.** Returns the live catalog of resource types + content collections. Answer "what can Team Pulse tell me?" by CALLING this, not from memory. |
+| `team_pulse_read(op="search", q=…, collection=…)` | `GET /api/lens/resources/search` | Find the specific corpus page (or member/question) matching a term. A bare query searches the corpus; pass `collection` to scope deterministically. |
+| `team_pulse_read(op="prefix", prefix=…)` | `GET /api/lens/resources/prefix/{p}` | Hierarchical listing — e.g. `prefix="members"`, or drill a corpus sub-corpus with `prefix="corpus/<sub>/"`. |
+| `team_pulse_read(op="resources", type=… / collection=…)` | `GET /api/lens/resources` | List members/questions (`type=`) or a corpus collection (`collection=`). Read `count`/`total`; page with `limit`/`offset`. |
+| `team_pulse_read(op="get", id=…)` | `GET /api/lens/resources/{id}` | Fetch one resource/page by full ID. Do NOT `get` a giant index/overview/log page in full — locate the specific page first (see `corpus-retrieval.md` §2). |
+| `team_pulse_read(op="graph")` | `GET /api/lens/graph` | Raw structural entity graph + reverse edges. **May include frozen/aging data — not a current-state source.** Large payload; use sparingly for structural relationships, and prefer the corpus for what's actually happening. |
 | `team_pulse_ask(prompt=…)` | `POST /api/lens/ask` | **Online generation** — only when the user names Team Pulse as the answerer. Returns a corpus-grounded synthesized answer that cites `tp://doc/…` sources. |
-| `team_pulse_download_corpus(dest_dir=…)` | `GET /api/lens/corpus/download` | Offline/bulk: extract the corpus `.md` tree to disk for your own grep/embeddings. Not for answering a single question. See `corpus-retrieval.md` §8. |
+| `team_pulse_write(op="download_corpus", dest_dir=…)` | `GET /api/lens/corpus/download` | Offline/bulk: extract the corpus `.md` tree to disk for your own grep/embeddings. Not for answering a single question. See `corpus-retrieval.md` §8. |
+| `team_pulse_read(op="whoami")` | `GET /api/lens/me` | The **server-verified** caller identity. Use for "me" / "my" / "mine". |
+| `team_pulse_read(op="status")` | *(local — no network)* | This client's resolved config (`base_url`, `auth_mode`); no secrets. Works even when auth is broken — use it to diagnose. |
+| `team_pulse_write(op="submit_answer", …)` | `POST /api/lens/answers` | Record a session-mined answer to a reflection question. |
+| `team_pulse_write(op="configure", url=…)` | *(local — no network)* | Persist this user's endpoint URL; effective immediately, no restart. |
 
 ## Common query patterns
 
@@ -116,9 +125,9 @@ question. Discover the collection names from `/info`, then scope to them.
 ### "What's the team doing / what shipped in area X?"
 
 ```python
-team_pulse_info()                                   # collection names + sub_corpora
-team_pulse_search(q="<area/topic>", collection="corpus")
-team_pulse_get(id="corpus/<sub>/<specific-page>.md")  # the ONE matching page
+team_pulse_read(op="info")                              # collection names + sub_corpora
+team_pulse_read(op="search", q="<area/topic>", collection="corpus")
+team_pulse_read(op="get", id="corpus/<sub>/<specific-page>.md")   # the ONE matching page
 ```
 
 Cite the page and its sub-corpus `last_updated` ("as of …"). See
@@ -135,9 +144,9 @@ recall.**
 ### "Who is on the team?" / member lookup
 
 ```python
-team_pulse_resources(type="member")          # roster; read result.count
-team_pulse_get(id="members/<handle>")        # one member's record
-team_pulse_prefix("members")                 # browse the namespace
+team_pulse_read(op="resources", type="member")   # roster; read result.count
+team_pulse_read(op="get", id="members/<handle>") # one member's record
+team_pulse_read(op="prefix", prefix="members")   # browse the namespace
 ```
 
 `member` is a real structured type — this is the one "roster" question that is
@@ -146,10 +155,10 @@ NOT a corpus lookup.
 ### Fuzzy lookup
 
 ```python
-team_pulse_search(q="<term>", collection="corpus", limit=20)
+team_pulse_read(op="search", q="<term>", collection="corpus", limit=20)
 ```
 
-Returns a list envelope. Use the IDs to follow up with `team_pulse_get` for the
+Returns a list envelope. Use the IDs to follow up with `team_pulse_read(op="get")` for the
 specific page's full body. (For sub-corpus scoping, pagination, and the
 big-file crash-guard, see `corpus-retrieval.md`.)
 
@@ -163,15 +172,15 @@ casing:
 ```python
 # List every active question — read result.count for the total
 # Returned in (created_at, id) order so display order follows authoring order.
-team_pulse_resources(type="question")
+team_pulse_read(op="resources", type="question")
 
 # Fetch one question by its full hierarchical ID
-team_pulse_get(id="questions/hard-questions")
+team_pulse_read(op="get", id="questions/hard-questions")
 # result.data is the question dict: {id, text, created_at, created_by}
 # result.title is the question text (questions have no separate title field)
 
 # Browse the whole namespace
-team_pulse_prefix("questions")
+team_pulse_read(op="prefix", prefix="questions")
 ```
 
 Question schema (v0):
@@ -203,7 +212,7 @@ Answers are the responses to reflection questions. The bundle exposes one
 write tool for submitting session-mined answers. There is no read tool for
 answers in v0 — answer read access is handled by the team-pulse app UI.
 
-#### Submitting an answer (`team_pulse_submit_answer`)
+#### Submitting an answer (`team_pulse_write(op="submit_answer")`)
 
 Use this tool to record an AI-generated answer attributed to a specific team
 member, synthesized from their Context Intelligence sessions.
@@ -236,14 +245,14 @@ passing it here. This matches the FK convention used throughout the surface
 
 ```python
 # 1. List all active questions to find the right slug
-questions = team_pulse_resources(type="question")
+questions = team_pulse_read(op="resources", type="question")
 # result.resources: [{id: "questions/higher-level-work", title: "...", ...}, ...]
 
 # 2. The list envelope uses hierarchical IDs — strip the prefix
 question_id = "higher-level-work"  # NOT "questions/higher-level-work"
 
 # 3. Submit the answer — session provenance goes INSIDE metadata
-result = team_pulse_submit_answer(
+result = team_pulse_write(op="submit_answer",
     question_id=question_id,
     user_id="jdoe",                   # github username of the analyzed person
     answer="Based on recent session analysis, ...",
@@ -324,29 +333,29 @@ result = team_pulse_ask(
 The corpus is exposed as one or more named content collections of `.md` pages.
 This section is the quick mechanic; the full skill is in `corpus-retrieval.md`.
 
-1. **Discover** — `team_pulse_info()` returns a `collections` array and, per
+1. **Discover** — `team_pulse_read(op="info")` returns a `collections` array and, per
    collection, a `sub_corpora[]` map with `{name, summary, last_updated,
    entry_points}`. Read names/freshness from here; never assume them.
 
-2. **Scope** — pass `collection=<name>` to `team_pulse_search` / `team_pulse_resources`:
+2. **Scope** — pass `collection=<name>` to `team_pulse_read(op="search")` / `team_pulse_read(op="resources")`:
 
    ```python
-   team_pulse_search(q="<topic>", collection="corpus")
-   team_pulse_resources(collection="corpus", limit=50)   # paginate; read total
+   team_pulse_read(op="search", q="<topic>", collection="corpus")
+   team_pulse_read(op="resources", collection="corpus", limit=50)   # paginate; read total
    ```
 
-3. **Read one page** — `team_pulse_get` with the full ID from the list
+3. **Read one page** — `team_pulse_read(op="get")` with the full ID from the list
    (`<collection>/<sub>/<path>.md`). Locate the specific page first; do not
    full-read a big index/overview/log page (`corpus-retrieval.md` §2).
 
 ## Error handling guidance
 
 * **404** → the resource ID is wrong or doesn't exist. Try
-  `team_pulse_prefix(...)` to discover valid IDs in that namespace, or
-  `team_pulse_search(q=…, collection="corpus")` for fuzzy lookup.
+  `team_pulse_read(op="prefix", prefix=...)` to discover valid IDs in that namespace, or
+  `team_pulse_read(op="search", q=…, collection="corpus")` for fuzzy lookup.
 * **400 `unsupported_type`** → you passed a `type=` that isn't currently served
   (the structured surface is `member`/`question`). The answer is in the corpus —
-  re-scope to `collection="corpus"`. Re-check `team_pulse_info()` for the live types.
+  re-scope to `collection="corpus"`. Re-check `team_pulse_read(op="info")` for the live types.
 * **401 / missing_or_malformed_key** → the bundle's `key` config is
   unset, mistyped, or revoked. Surface the error code to the user; do
   NOT retry blindly.

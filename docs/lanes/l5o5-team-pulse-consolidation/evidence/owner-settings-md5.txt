@@ -1,0 +1,34 @@
+# Owner settings.yaml — read-only handling, and an honest disclosure
+
+The rendered-surface measurement needs a realistic app list, so the owner's
+~/.amplifier/settings.yaml was READ and its 20-entry bundle.app list DEEP-COPIED
+into a scratch home at /tmp/l5o5/amp-home/settings.yaml, with the team-pulse git
+entry swapped for a file:// reference to this checkout. 20 entries in, 20 out.
+This lane never opened the owner's file for writing and never wrote to the
+owner's bundle cache.
+
+## md5 log
+
+  46626a4177074389f3bb1cdc86a10226   at T0, before the BEFORE render
+  46626a4177074389f3bb1cdc86a10226   immediately after the scratch home was built
+  028a195c52bb1a0c81be88c5ed9253f5   observed later, after the AFTER render
+
+## DISCLOSURE: the third hash differs, and it was not this lane
+
+The owner's settings.yaml changed on disk between the two renders. This lane did
+not do it — a CONCURRENT sibling lane on the same machine did. The evidence is in
+the render log itself: the AFTER run reported an editable-install .pth pointing at
+`/tmp/hd-android-scratch-before-bfKCxP/cache/...`, another lane's scratch home,
+which only appears if another process was mutating shared amplifier state at the
+same time.
+
+The file is intact: still 20 app entries, still carrying
+`git+https://github.com/microsoft/amplifier-bundle-team-pulse@main#subdirectory=behaviors/team-pulse.yaml`.
+
+## Why the measurement is unaffected
+
+Both renders read the SAME scratch settings.yaml, written once at T0 from the
+T0 copy of the owner's file. Neither render re-read the owner's file. The
+independent check is the total mounted tool count: 86 before, 77 after — exactly
+-9, which is entirely the 12 -> 3 team-pulse change. Nothing else in the app list
+moved between the two runs.
