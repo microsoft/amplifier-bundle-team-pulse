@@ -26,6 +26,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "respx>=0.21",
+    "ruff>=0.8",
 ]
 
 [tool.hatch.version]
@@ -46,3 +47,7 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# A function-local import follows the explanatory comment it supports.
+"tests/test_client.py" = ["I001"]
