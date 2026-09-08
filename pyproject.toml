@@ -69,6 +69,9 @@ dependencies = [
     "aiohttp>=3",
 ]
 
+[tool.uv.workspace]
+members = ["team-pulse-lib", "modules/tool-team-pulse"]
+
 [tool.hatch.version]
 # Share team_pulse_lib's single source of truth so the shim and lib never drift.
 # (See team-pulse-lib/team_pulse_lib/_version.py — it explicitly documents that
