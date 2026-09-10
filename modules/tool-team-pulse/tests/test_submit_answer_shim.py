@@ -213,11 +213,29 @@ def test_schema_additional_properties_false():
     assert _schema().get("additionalProperties") is False
 
 
-def test_schema_question_id_has_bare_slug_pattern():
-    """question_id must carry the bare-slug regex to reject hierarchical IDs."""
-    props = _schema()["properties"]
-    assert "pattern" in props["question_id"]
-    assert props["question_id"]["pattern"] == "^[a-z0-9][a-z0-9-]*$"
+def test_schema_question_id_accepts_bare_and_qualified():
+    """question_id pattern accepts both the bare slug and the qualified
+    'questions/<slug>' form (the _call strips the prefix), while still rejecting
+    traversal/garbage."""
+    import re
+
+    pat = _schema()["properties"]["question_id"]["pattern"]
+    assert re.match(pat, "higher-level-work")
+    assert re.match(pat, "questions/higher-level-work")
+    assert not re.match(pat, "../etc")
+    assert not re.match(pat, "questions/../x")
+
+
+async def test_qualified_question_id_is_stripped_to_bare():
+    """A qualified 'questions/<slug>' id is stripped to the bare slug before the
+    AnswerUpload is built (the submit endpoint keys on the bare slug)."""
+    mock_client = _make_mock_client()
+    tool = TeamPulseSubmitAnswerTool(mock_client)
+    qualified = {**_VALID_INPUT, "question_id": "questions/higher-level-work"}
+    await tool.execute(qualified)
+
+    arg: AnswerUpload = mock_client.upload_answer.call_args[0][0]
+    assert arg.question_id == "higher-level-work"  # prefix stripped
 
 
 def test_schema_has_no_source_field():
