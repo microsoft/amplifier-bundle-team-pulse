@@ -8,12 +8,12 @@ module (which mounted 12 tools and had no compatibility table):
 
 1. ``mount()`` registers EXACTLY three tools: team_pulse_read,
    team_pulse_write, team_pulse_ask.
-2. Every formerly-separate tool name that had >= 1 recorded call resolves
+2. Every supported formerly-separate tool name that had >= 1 recorded call resolves
    through :data:`COMPAT_TABLE` to exactly one (new tool, op) pair, and that op
    really exists on that tool.
 
 USAGE, 30-day window, 9 users (source: W/_dashboard/TOOL-SKILL-USAGE.md).
-This is the population the consolidation must not break:
+This is the supported population the consolidation must not break:
 
     | tool                       | calls | distinct users |
     |----------------------------|------:|---------------:|
@@ -25,7 +25,6 @@ This is the population the consolidation must not break:
     | team_pulse_resources       |    30 |              6 |
     | team_pulse_whoami          |    16 |              6 |
     | team_pulse_download_corpus |     5 |              3 |
-    | team_pulse_graph           |     2 |              2 |
 
 Zero-in-window: team_pulse_configure (2 calls all-time),
 team_pulse_submit_answer (0 all-time), team_pulse_ask (5 all-time — UNCHANGED,
@@ -55,7 +54,6 @@ USAGE_30D: dict[str, tuple[int, int]] = {
     "team_pulse_resources": (30, 6),
     "team_pulse_whoami": (16, 6),
     "team_pulse_download_corpus": (5, 3),
-    "team_pulse_graph": (2, 2),
 }
 
 #: Names with zero calls in the window but still part of the old surface.
@@ -111,7 +109,7 @@ async def test_no_legacy_tool_name_is_still_mounted() -> None:
 
 
 async def test_every_used_tool_name_resolves_to_a_live_op() -> None:
-    """Each of the 9 names with >=1 call maps to one (tool, op) that exists."""
+    """Each of the 8 supported names with >=1 call maps to one live (tool, op)."""
     tools = await _mounted()
     for old_name in USAGE_30D:
         assert old_name in COMPAT_TABLE, f"{old_name} missing from COMPAT_TABLE"
@@ -125,9 +123,9 @@ async def test_every_used_tool_name_resolves_to_a_live_op() -> None:
 
 
 def test_compat_table_covers_every_former_tool_name() -> None:
-    """All 12 former names are in the table — the 9 used plus the 3 unused."""
+    """All 11 supported former names are in the table — 8 used plus 3 unused."""
     assert set(COMPAT_TABLE) == set(USAGE_30D) | set(ZERO_IN_WINDOW)
-    assert len(COMPAT_TABLE) == 12
+    assert len(COMPAT_TABLE) == 11
 
 
 def test_compat_table_maps_each_name_to_exactly_one_pair() -> None:
@@ -171,13 +169,12 @@ async def test_ask_schema_is_unchanged() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_read_ops_are_exactly_the_documented_eight() -> None:
+def test_read_ops_are_exactly_the_documented_seven() -> None:
     assert set(TeamPulseReadTool._OPS) == {
         "get",
         "search",
         "prefix",
         "resources",
-        "graph",
         "info",
         "whoami",
         "status",

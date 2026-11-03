@@ -31,7 +31,6 @@ def _client() -> AsyncMock:
     client.search = AsyncMock(return_value={"resources": [], "count": 0})
     client.prefix = AsyncMock(return_value={"resources": [], "count": 0})
     client.resources = AsyncMock(return_value={"resources": [], "count": 0})
-    client.graph = AsyncMock(return_value={"nodes": []})
     client.info = AsyncMock(return_value={"name": "team-pulse"})
     client.whoami = AsyncMock(return_value={"handle": "jdoe"})
     client.download_corpus = AsyncMock(return_value={"written": 3})
