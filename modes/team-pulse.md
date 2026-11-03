@@ -182,27 +182,19 @@ mode:
              * roster → `team_pulse_read(op="resources", type="member")`, `team_pulse_read(op="get", id="members/<handle>")`
              * reflection questions → `team_pulse_read(op="resources", type="question")`
              A `type=` outside the live `resource_types` returns 400 `unsupported_type`
-             — that's the signal to RECOVER, not give up: for a decision/why/status
-             question the answer is in the corpus; for a structural list/rollup
-             (projects, tasks, initiatives→outcomes) use `team_pulse_read(op="graph")`.
+             — re-check discovery and search the corpus for relevant evidence.
+             Do not claim a structured listing exists when the API does not serve it.
           4. **NEVER `get` a big index/overview/log page in full** — locate the
              specific page first (search/prefix), then `get` that one. A full read of
              a huge entry file can overflow the context and crash the session.
              **This bites hardest on "overview / summarize everything / rollup"
              questions:** do NOT answer them by `get`-ting `overview.md` (it can be
-             ~1MB and will time out). For a STRUCTURAL overview/rollup use
-             `team_pulse_read(op="graph")` (one compact payload); otherwise pull a few targeted
-             pages via search/prefix and synthesize.
+             ~1MB and will time out). Pull a few targeted pages via search/prefix
+             and synthesize, making any coverage gaps explicit.
           5. **The JOIN** (highest-value move): recover a decision in one sub-corpus,
              confirm its implementation (repo + PR# + author) in another, and cite
              both sides with each sub-corpus's `last_updated`. See the corpus-retrieval
              reference for the full playbook.
-          6. **`team_pulse_read(op="graph")`** is the compact structural map (initiatives →
-             outcomes → projects → tasks → members). Use it for STRUCTURE / roster /
-             rollup questions and as the recovery path when a `type=` isn't served —
-             it's also how you give a structural "overview" without full-reading a
-             huge page. Its status-ish fields may be frozen/aging, so for
-             "is X on track / current status" prefer the corpus (fresher).
 
           ## Output contract
 
@@ -243,7 +235,6 @@ mode:
           * `team_pulse_read(op="search")` — text search; pass `collection="corpus"` to scope to the corpus
           * `team_pulse_read(op="prefix")` — hierarchical ID listing (e.g. `team_pulse_read(op="prefix", prefix="corpus/<sub>/")`)
           * `team_pulse_read(op="get")` — single resource/page by full ID; corpus pages return `content` (raw markdown), entities return `data` (dict)
-          * `team_pulse_read(op="graph")` — compact composed graph (structure/roster/rollup + recovery for hidden types); status-ish fields may be frozen, prefer corpus for current status
           * `team_pulse_ask` — online generation. EXPLICIT-USE ONLY: call only when the parent's request names Team Pulse as the answerer (e.g. "ask Team Pulse …"); otherwise read + compose. Never mix with raw reads in one answer. (`prompt` required, `focus` optional)
           * `team_pulse_write(op="download_corpus")` — offline/bulk: extract the corpus `.md` tree to disk (bearer auth); not for answering one question
           * `team_pulse_write(op="submit_answer")` — submit a session-mined answer to a reflection question
@@ -304,10 +295,7 @@ type here — **the answer is in the corpus; search the corpus for it.**
    - The roster ("who is on the team") is the `member` type; reflection prompts
      are the `question` type. **Decisions, history, what-shipped, who-owns, why,
      how-things-work, and current status live in the corpus** — match the intent to
-     the sub-corpus whose `summary` fits. **Structural facts a `type=` no longer
-     serves — the list of projects/tasks, how initiatives roll up to outcomes — come
-     from `team_pulse_read(op="graph")`** (the compact composed graph), not from full-reading a
-     corpus overview page.
+     the sub-corpus whose `summary` fits.
    - **If more than one sub-corpus could hold the answer, don't just pick the
      first or the most obvious by name.** Prefer the one whose `summary` best
      matches; when they genuinely overlap, prefer the more recent `last_updated`
@@ -352,19 +340,14 @@ type here — **the answer is in the corpus; search the corpus for it.**
    be hundreds of KB — a full `get` on one can overflow context and crash the
    session. Search/prefix to the specific page first, then `get` that one. **For
    "overview / summarize / rollup" questions especially: do NOT `get` the overview
-   page in full — use `team_pulse_read(op="graph")` for a structural rollup, or synthesize a
-   few targeted pages.** `team_pulse_read(op="graph")` returns the compact composed graph
-   (initiatives → outcomes → projects → tasks → members): use it for
-   structure/roster/rollup and as the recovery path when a `type=` isn't served —
-   its status-ish fields may be frozen, so route "current status / is X on track"
-   to the corpus instead.
+   page in full — synthesize a few targeted pages and state any coverage gaps.**
 
 6. **Surface errors verbatim.** When a tool call fails, quote the
    envelope's `code` and `message` back. Common failures: 404 (wrong ID — try
    `team_pulse_read(op="search")`/`team_pulse_read(op="prefix")` to find the right one), 400
-   `unsupported_type` (a type that isn't served — RECOVER, don't give up: re-scope to
-   `collection="corpus"` for decisions/why/status, or use `team_pulse_read(op="graph")` for a
-   structural list/rollup), and 401 (bundle misconfigured — surface, don't retry).
+   `unsupported_type` (a type that isn't served — re-check discovery and search
+   relevant corpus pages; do not invent a structured listing), and 401 (bundle
+   misconfigured — surface, don't retry).
 
 7. **Read-mostly is the contract.** The one write tool is `team_pulse_write(op="submit_answer")`
    for session-mining answer submission. Do not promise to update, edit, or persist
@@ -372,9 +355,9 @@ type here — **the answer is in the corpus; search the corpus for it.**
 
 ## Old tool name → new call
 
-Three tools are mounted. If you remember a `team_pulse_<verb>` tool, it is now
-an `op` on one of them — same parameters, plus the required `op`. The same table
-lives in code as `COMPAT_TABLE`.
+Three tools are mounted. Supported former `team_pulse_<verb>` tools map to
+the calls below — same parameters, plus the required `op` where applicable.
+The same table lives in code as `COMPAT_TABLE`.
 
 | Old tool | New call |
 |---|---|
@@ -382,7 +365,6 @@ lives in code as `COMPAT_TABLE`.
 | `team_pulse_search` | `team_pulse_read(op="search", q=…)` |
 | `team_pulse_prefix` | `team_pulse_read(op="prefix", prefix=…)` |
 | `team_pulse_resources` | `team_pulse_read(op="resources", type=…)` |
-| `team_pulse_graph` | `team_pulse_read(op="graph")` |
 | `team_pulse_info` | `team_pulse_read(op="info")` |
 | `team_pulse_whoami` | `team_pulse_read(op="whoami")` |
 | `team_pulse_status` | `team_pulse_read(op="status")` |

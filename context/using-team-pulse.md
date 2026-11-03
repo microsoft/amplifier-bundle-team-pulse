@@ -109,7 +109,6 @@ spends server-side LLM budget, so calling it is always a deliberate act.
 | `team_pulse_read(op="prefix", prefix=…)` | `GET /api/lens/resources/prefix/{p}` | Hierarchical listing — e.g. `prefix="members"`, or drill a corpus sub-corpus with `prefix="corpus/<sub>/"`. |
 | `team_pulse_read(op="resources", type=… / collection=…)` | `GET /api/lens/resources` | List members/questions (`type=`) or a corpus collection (`collection=`). Read `count`/`total`; page with `limit`/`offset`. |
 | `team_pulse_read(op="get", id=…)` | `GET /api/lens/resources/{id}` | Fetch one resource/page by full ID. Do NOT `get` a giant index/overview/log page in full — locate the specific page first (see `corpus-retrieval.md` §2). |
-| `team_pulse_read(op="graph")` | `GET /api/lens/graph` | Raw structural entity graph + reverse edges. **May include frozen/aging data — not a current-state source.** Large payload; use sparingly for structural relationships, and prefer the corpus for what's actually happening. |
 | `team_pulse_ask(prompt=…)` | `POST /api/lens/ask` | **Online generation** — only when the user names Team Pulse as the answerer. Returns a corpus-grounded synthesized answer that cites `tp://doc/…` sources. |
 | `team_pulse_write(op="download_corpus", dest_dir=…)` | `GET /api/lens/corpus/download` | Offline/bulk: extract the corpus `.md` tree to disk for your own grep/embeddings. Not for answering a single question. See `corpus-retrieval.md` §8. |
 | `team_pulse_read(op="whoami")` | `GET /api/lens/me` | The **server-verified** caller identity. Use for "me" / "my" / "mine". |

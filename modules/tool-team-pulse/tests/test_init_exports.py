@@ -4,8 +4,8 @@
 """Tests for the __init__.py public surface.
 
 Acceptance criteria:
-- __all__ lists exactly the 14 tool classes + COMPAT_TABLE + 'mount'.
-  The 14 are the 3 MOUNTED tools (read / write / ask) plus the 11 per-op
+- __all__ lists exactly the 13 tool classes + COMPAT_TABLE + 'mount'.
+  The 13 are the 3 MOUNTED tools (read / write / ask) plus the 10 per-op
   handler classes, which stay importable because they hold the per-op
   request/response logic and its tests.
 - Legacy shim symbols are NOT exported (ApiKeyAuth, AzTokenAuth, AzTokenError,
@@ -27,7 +27,6 @@ _OP_HANDLERS = [
     "TeamPulseConfigureTool",
     "TeamPulseDownloadCorpusTool",
     "TeamPulseGetTool",
-    "TeamPulseGraphTool",
     "TeamPulseInfoTool",
     "TeamPulsePrefixTool",
     "TeamPulseResourcesTool",
@@ -41,17 +40,17 @@ _EXPECTED = sorted([*_MOUNTED, *_OP_HANDLERS, "COMPAT_TABLE", "mount"])
 
 
 def test_all_contains_the_expected_names():
-    """__all__ must list the 3 mounted tools, 11 op handlers, COMPAT_TABLE, mount."""
+    """__all__ must list the 3 mounted tools, 10 op handlers, COMPAT_TABLE, mount."""
     import amplifier_module_tool_team_pulse as m
 
     assert sorted(m.__all__) == _EXPECTED
 
 
-def test_all_has_exactly_16_names():
-    """3 mounted + 11 handlers + COMPAT_TABLE + mount == 16."""
+def test_all_has_exactly_15_names():
+    """3 mounted + 10 handlers + COMPAT_TABLE + mount == 15."""
     import amplifier_module_tool_team_pulse as m
 
-    assert len(m.__all__) == 16
+    assert len(m.__all__) == 15
 
 
 def test_legacy_shim_symbols_not_in_all():
@@ -98,7 +97,7 @@ def test_compat_table_is_exported_and_complete():
     """COMPAT_TABLE is public: it is how old call sites get corrected."""
     from amplifier_module_tool_team_pulse import COMPAT_TABLE
 
-    assert len(COMPAT_TABLE) == 12
+    assert len(COMPAT_TABLE) == 11
     assert COMPAT_TABLE["team_pulse_get"] == ("team_pulse_read", "get")
     assert COMPAT_TABLE["team_pulse_configure"] == ("team_pulse_write", "configure")
     assert COMPAT_TABLE["team_pulse_ask"] == ("team_pulse_ask", "ask")

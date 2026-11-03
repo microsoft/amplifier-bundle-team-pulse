@@ -21,7 +21,7 @@ tests — and are listed in :data:`_OP_HANDLER_CLASSES`.  They are no longer
 mounted individually, so their ``description`` strings no longer reach any
 model; they now serve as per-op documentation for maintainers.
 
-:data:`COMPAT_TABLE` maps every formerly-separate tool name to exactly one
+:data:`COMPAT_TABLE` maps each supported formerly-separate tool name to exactly one
 ``(new_tool, op)`` pair.
 """
 
@@ -553,25 +553,6 @@ class TeamPulseGetTool(_LensTool):
         return ToolResult(success=True, output=output)
 
 
-class TeamPulseGraphTool(_LensTool):
-    """Fetch the full composed entity graph — every resource of every type plus
-    computed reverse edges, in one response. Large payload: prefer
-    team_pulse_resources / team_pulse_get for targeted lookups."""
-
-    name = "team_pulse_graph"
-    description = (
-        "Fetch the full composed entity graph — every resource of every type plus "
-        "computed reverse edges, in one response. "
-        "Large payload: prefer team_pulse_resources / team_pulse_get for targeted lookups. "
-        "Use this when you need cross-resource relationships (who's on what, which projects "
-        "roll up to which initiative, etc.)."
-    )
-
-    async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
-        output = await client.graph()
-        return ToolResult(success=True, output=output)
-
-
 class TeamPulseWhoamiTool(_LensTool):
     """Resolve the current caller's identity, for requests phrased as
     'me' / 'my' / 'mine'. Returns how the caller authenticated and whether a
@@ -884,8 +865,8 @@ class TeamPulseConfigureTool:
 
 # --- Consolidated tool surface -------------------------------------------
 #
-# Twelve separately-mounted team_pulse_* tools became THREE.  The op handlers
-# above are unchanged and unmounted; the two dispatchers below select one by an
+# Supported team_pulse_* operations are mounted as THREE tools. The op handlers
+# above are unmounted; the two dispatchers below select one by an
 # `op` enum, and team_pulse_ask stays exactly as it was.
 
 
@@ -899,7 +880,6 @@ _OP_HANDLER_CLASSES: list[type] = [
     TeamPulseSearchTool,
     TeamPulsePrefixTool,
     TeamPulseGetTool,
-    TeamPulseGraphTool,
     TeamPulseStatusTool,
     TeamPulseDownloadCorpusTool,
     TeamPulseSubmitAnswerTool,
@@ -908,7 +888,7 @@ _OP_HANDLER_CLASSES: list[type] = [
 
 #: COMPATIBILITY TABLE — former tool name -> (new tool name, op).
 #:
-#: Every one of the twelve formerly-separate tool names maps to exactly one
+#: Each supported formerly-separate tool name maps to exactly one
 #: (tool, op) pair, so existing call sites and documentation referencing an old
 #: name can be corrected mechanically.  ``team_pulse_ask`` maps to itself: it is
 #: NOT consolidated, because it triggers server-side LLM spend and must remain
@@ -922,7 +902,6 @@ COMPAT_TABLE: dict[str, tuple[str, str]] = {
     "team_pulse_prefix": ("team_pulse_read", "prefix"),
     "team_pulse_resources": ("team_pulse_read", "resources"),
     "team_pulse_whoami": ("team_pulse_read", "whoami"),
-    "team_pulse_graph": ("team_pulse_read", "graph"),
     # writes / local actions
     "team_pulse_download_corpus": ("team_pulse_write", "download_corpus"),
     "team_pulse_submit_answer": ("team_pulse_write", "submit_answer"),
@@ -987,7 +966,6 @@ class TeamPulseReadTool(_OpTool):
         "search: substring search. "
         "prefix: every id under a path prefix, e.g. 'projects'. "
         "resources: list, optional type/collection filter. "
-        "graph: whole entity graph — large, cross-resource questions only. "
         "info: the SERVER's self-description (resource_types, collections); check "
         "it before assuming a type exists. "
         "whoami: server-verified caller identity, for 'me'/'my'. "
@@ -1000,7 +978,6 @@ class TeamPulseReadTool(_OpTool):
         "search": (TeamPulseSearchTool, ("q",)),
         "prefix": (TeamPulsePrefixTool, ("prefix",)),
         "resources": (TeamPulseResourcesTool, ()),
-        "graph": (TeamPulseGraphTool, ()),
         "info": (TeamPulseInfoTool, ()),
         "whoami": (TeamPulseWhoamiTool, ()),
         "status": (TeamPulseStatusTool, ()),

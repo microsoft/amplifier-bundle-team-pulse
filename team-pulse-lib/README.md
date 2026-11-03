@@ -197,7 +197,6 @@ the Phase-0 additions; the read methods were lifted from the prior client unchan
 | `search(q, limit=50, collection=)` | `GET /api/lens/resources/search` |
 | `prefix(prefix)` | `GET /api/lens/resources/prefix/{prefix}` |
 | `get(resource_id)` | `GET /api/lens/resources/{id}` |
-| `graph()` | `GET /api/lens/graph` |
 | `whoami()` | `GET /api/lens/me` |
 | `ask(prompt, focus=)` | `POST /api/lens/ask` |
 | *capability probe* (guardrail) | `GET /api/lens/info` *(cached ~60s, advisory)* |
@@ -215,7 +214,6 @@ own tool because it triggers server-side LLM spend.
 | `team_pulse_read(op="search")` | `search()` | `GET /api/lens/resources/search` |
 | `team_pulse_read(op="prefix")` | `prefix()` | `GET /api/lens/resources/prefix/{prefix}` |
 | `team_pulse_read(op="get")` | `get()` | `GET /api/lens/resources/{id}` |
-| `team_pulse_read(op="graph")` | `graph()` | `GET /api/lens/graph` |
 | `team_pulse_read(op="whoami")` | `whoami()` | `GET /api/lens/me` |
 | `team_pulse_read(op="status")` | `describe()` | *(local — no network, no secrets)* |
 | `team_pulse_write(op="submit_answer")` | `upload_answer()` | `POST /api/lens/answers` |
