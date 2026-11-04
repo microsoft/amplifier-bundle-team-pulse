@@ -466,7 +466,7 @@ class TeamPulseClient:
             resource_id: Full resource ID (e.g. ``'projects/team-pulse'``).
                 Leading slashes are stripped so both forms are accepted.
             offset: UTF-8 byte offset (default 0); nonzero requires a revision pin.
-            limit: UTF-8 byte budget. None uses the server's 32768-byte default;
+            limit: UTF-8 byte budget. None uses the server's 153600-byte default;
                 maximum 153600. The server validates bounds and UTF-8 boundaries.
             expected_revision: Pin to the full served text's content_revision
                 (``lens-text-v1:`` + SHA-256). Mismatch raises HTTP 409

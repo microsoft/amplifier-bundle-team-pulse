@@ -187,7 +187,7 @@ mode:
              Do not claim a structured listing exists when the API does not serve it.
           4. **Inspect the selected GET window.** Content GETs return top-level
              `content_revision` and `metadata` with byte `offset`, `returned_bytes`,
-             `total_bytes`, `next_offset`, `truncated`. Default 32768 UTF-8 bytes;
+             `total_bytes`, `next_offset`, `truncated`. Default 153600 UTF-8 bytes;
              maximum 153600. Continue only if needed, with exact `next_offset`
              and the same `content_revision` as `expected_revision`. Never
              auto-follow or assemble an entire aggregate. A nonzero offset needs
@@ -345,7 +345,7 @@ type here — **the answer is in the corpus; search the corpus for it.**
    ```
 
 5. **Locate, read one window, inspect, then decide.** Select exact IDs from
-   scoped search/browse. Content GETs default to 32768 UTF-8 bytes (max 153600).
+   scoped search/browse. Content GETs default to 153600 UTF-8 bytes (max 153600).
    Inspect top-level `content_revision` and `metadata` (`offset`, `returned_bytes`,
    `total_bytes`, `next_offset`, `truncated`). Continue only when needed with
    exact `next_offset` + `expected_revision`. Never auto-follow an aggregate.

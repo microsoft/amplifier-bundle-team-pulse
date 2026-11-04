@@ -584,7 +584,7 @@ class TeamPulseGetTool(_LensTool):
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 153600,
-                    "description": "UTF-8 byte budget; server default 32768.",
+                    "description": "UTF-8 byte budget; server default 153600.",
                 },
                 "expected_revision": {
                     "type": "string",
@@ -1047,7 +1047,7 @@ class TeamPulseReadTool(_OpTool):
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "get: UTF-8 bytes (default 32768, max 153600); search: hits (default 50, max 200); resources/prefix: records.",
+                    "description": "get: UTF-8 bytes (default/max 153600); search: hits (default 50, max 200); resources/prefix: records.",
                 },
                 "offset": {
                     "type": "integer",

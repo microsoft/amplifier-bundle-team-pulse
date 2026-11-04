@@ -242,7 +242,7 @@ def test_mounted_read_schema_exposes_paging_in_both_units() -> None:
     assert "expected_revision" in props
     assert "expected_revision" in TeamPulseGetTool(None).input_schema["properties"]
     assert props["expected_revision"]["type"] == "string"
-    assert "32768" in props["limit"]["description"]
+    assert "default/max 153600" in props["limit"]["description"]
     assert "153600" in props["limit"]["description"]
     assert "UTF-8" in props["offset"]["description"]
     assert "offset" not in TeamPulseSearchTool(None).input_schema["properties"]

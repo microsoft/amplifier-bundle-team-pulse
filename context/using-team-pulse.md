@@ -93,7 +93,7 @@ the top-level `type`/shape:
 Content GETs expose top-level `content_revision` (`lens-text-v1:` + SHA-256 of
 the full captured served text re-encoded as UTF-8) and metadata `offset`,
 `returned_bytes`, `total_bytes`, `next_offset`, `truncated`. The default window
-is 32768 UTF-8 bytes, maximum 153600. A GET makes one request and never
+is 153600 UTF-8 bytes (150 KiB), also the maximum. A GET makes one request and never
 auto-assembles pages. Only continue when needed, using the exact `next_offset`
 and the same revision as `expected_revision`; nonzero offsets require a pin.
 Entities are not paged and have no content revision.

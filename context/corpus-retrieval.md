@@ -42,7 +42,7 @@ read every aggregate in full.
    Search snippets locate evidence; they are not a full document read.
 3. **Inspect `content_revision` and `metadata`**: `offset`, `returned_bytes`,
    `total_bytes`, `next_offset`, `truncated`. A content GET returns one UTF-8
-   byte window (default **32768 bytes / 32 KiB**, maximum **153600 bytes**).
+   byte window (default and maximum **153600 bytes / 150 KiB**).
    Structured entities return `data`, without paging or a content revision.
 4. **Continue only if the question needs more text.** Pass the exact
    `metadata.next_offset` and the same `content_revision` as `expected_revision`.

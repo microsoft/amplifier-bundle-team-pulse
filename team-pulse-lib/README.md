@@ -225,7 +225,7 @@ own tool because it triggers server-side LLM spend.
 `get()` returns the JSON envelope unchanged, including top-level
 `content_revision` and metadata `offset`, `returned_bytes`, `total_bytes`,
 `next_offset`, `truncated`. It makes **one request per call**, never auto-follows
-or assembles all pages. Content defaults to a **32768-byte UTF-8 window** when
+or assembles all pages. Content defaults to a **153600-byte UTF-8 window** when
 `limit=None` (the parameter is omitted), maximum **153600** bytes. Entities
 remain unpaged, with no content revision.
 

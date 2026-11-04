@@ -277,7 +277,7 @@ markdown design docs. Doc bodies come back as raw markdown in the
 
 Discover → scoped search/browse → select exact IDs → read one window → inspect
 revision/truncation → continue only if needed → cite consulted passages/limits.
-Content windows default to **32768 UTF-8 bytes (32 KiB)**, maximum **153600**.
+Content windows retain the **153600 UTF-8 byte (150 KiB)** default and maximum.
 Their metadata includes `offset`, `returned_bytes`, `total_bytes`, `next_offset`,
 `truncated`; `content_revision` is `lens-text-v1:` + SHA-256 of the full captured,
 normalized served text re-encoded as UTF-8. Entities are not paged/revisioned.
