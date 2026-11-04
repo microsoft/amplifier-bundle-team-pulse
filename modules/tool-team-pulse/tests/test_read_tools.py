@@ -9,10 +9,13 @@ All tool classes (TeamPulseInfoTool, etc.) must be importable after Task 2.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 # Use team_pulse_lib errors for connection error test
-from team_pulse_lib.errors import TeamPulseConnectionError
+from team_pulse_lib.errors import TeamPulseAPIError, TeamPulseConnectionError
 
 # Step 2: these imports FAIL with ImportError until the classes are added to tool.py
 from amplifier_module_tool_team_pulse.tool import (
@@ -21,6 +24,7 @@ from amplifier_module_tool_team_pulse.tool import (
     TeamPulseGetTool,
     TeamPulseInfoTool,
     TeamPulsePrefixTool,
+    TeamPulseReadTool,
     TeamPulseResourcesTool,
     TeamPulseSearchTool,
     TeamPulseWhoamiTool,
@@ -166,6 +170,84 @@ async def test_get_forwards_positional_id() -> None:
 
     assert result.success is True
     mock_client.get.assert_awaited_once_with("projects/tp")
+
+
+async def test_mounted_read_get_forwards_window_and_preserves_envelope() -> None:
+    client = _client()
+    revision = "lens-text-v1:" + "a" * 64
+    body = {
+        "content": "😀", "content_revision": revision,
+        "metadata": {"offset": 7, "returned_bytes": 4, "total_bytes": 99, "next_offset": 11, "truncated": True},
+    }
+    client.get.return_value = body
+    result = await TeamPulseReadTool(_make_provider(client)).execute({
+        "op": "get", "id": "corpus/wiki/page.md",
+        "offset": 7, "limit": 32768, "expected_revision": revision,
+    })
+    assert result.success is True
+    assert result.output == body
+    client.get.assert_awaited_once_with(
+        "corpus/wiki/page.md", offset=7, limit=32768, expected_revision=revision
+    )
+
+
+@pytest.mark.parametrize("op", ["resources", "prefix"])
+async def test_mounted_read_forwards_record_paging_and_metadata(op) -> None:
+    client = _client()
+    body = {"count": 1, "resources": [{"id": "corpus/wiki/page.md"}], "offset": 3, "total": 8, "limit": 1}
+    getattr(client, op).return_value = body
+    payload = {"op": op, "limit": 1, "offset": 3}
+    payload.update({"collection": "corpus"} if op == "resources" else {"prefix": "corpus/wiki"})
+    result = await TeamPulseReadTool(_make_provider(client)).execute(payload)
+    assert result.output == body
+    if op == "resources":
+        client.resources.assert_awaited_once_with(type=None, collection="corpus", status=None, limit=1, offset=3)
+    else:
+        client.prefix.assert_awaited_once_with("corpus/wiki", limit=1, offset=3)
+
+
+@pytest.mark.parametrize(
+    ("op", "payload", "status", "code"),
+    [
+        ("get", {"id": "corpus/wiki/page.md", "offset": 9, "expected_revision": "lens-text-v1:" + "a" * 64},
+         409, "source_changed"),
+        ("get", {"id": "corpus/wiki/page.md", "offset": 9}, 422, "revision_required"),
+        ("search", {"q": "topic", "collection": "corpus"}, 503, "search_unavailable"),
+    ],
+)
+async def test_mounted_read_retains_structured_errors_without_retry(op, payload, status, code) -> None:
+    client = _client()
+    error = {"code": code, "message": "Synthetic failure", "status": status, "detail": {"kept": True}}
+    getattr(client, op).side_effect = TeamPulseAPIError(status=status, body=json.dumps({"error": error}))
+    result = await TeamPulseReadTool(_make_provider(client)).execute({"op": op, **payload})
+    assert result.success is False
+    assert result.error == error
+    getattr(client, op).assert_awaited_once()
+
+
+async def test_mounted_search_rejects_unsupported_offset() -> None:
+    client = _client()
+    result = await TeamPulseReadTool(_make_provider(client)).execute({"op": "search", "q": "topic", "offset": 1})
+    assert result.success is False
+    client.search.assert_not_awaited()
+
+
+def test_mounted_read_schema_exposes_paging_in_both_units() -> None:
+    props = TeamPulseReadTool(None).input_schema["properties"]
+    for handler in (TeamPulseGetTool, TeamPulseResourcesTool, TeamPulsePrefixTool):
+        handler_props = handler(None).input_schema["properties"]
+        for field in ("limit", "offset"):
+            assert field in props and field in handler_props
+            assert props[field]["type"] == handler_props[field]["type"] == "integer"
+    assert "expected_revision" in props
+    assert "expected_revision" in TeamPulseGetTool(None).input_schema["properties"]
+    assert props["expected_revision"]["type"] == "string"
+    assert "default/max 153600" in props["limit"]["description"]
+    assert "153600" in props["limit"]["description"]
+    assert "UTF-8" in props["offset"]["description"]
+    assert "offset" not in TeamPulseSearchTool(None).input_schema["properties"]
+    # A search-only maximum would make legitimate document byte budgets unavailable.
+    assert props["limit"].get("maximum", 153600) >= 153600
 
 
 # ---------------------------------------------------------------------------

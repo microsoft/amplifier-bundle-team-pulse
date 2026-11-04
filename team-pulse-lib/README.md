@@ -193,13 +193,12 @@ the Phase-0 additions; the read methods were lifted from the prior client unchan
 | `upload_answer(answer)` | `POST /api/lens/answers` |
 | `describe()` | *(local — no network; resolved client config)* |
 | `info()` | `GET /api/lens/info` |
-| `resources(type=, collection=)` | `GET /api/lens/resources` |
+| `resources(type=, collection=, status=, *, limit=None, offset=None)` | `GET /api/lens/resources` (optional record paging; default unbounded) |
 | `search(q, limit=50, collection=)` | `GET /api/lens/resources/search` |
-| `prefix(prefix)` | `GET /api/lens/resources/prefix/{prefix}` |
-| `get(resource_id)` | `GET /api/lens/resources/{id}` |
+| `prefix(prefix, *, limit=None, offset=None)` | `GET /api/lens/resources/prefix/{prefix}` (optional record paging; default unbounded) |
+| `get(resource_id, *, offset=0, limit=None, expected_revision=None)` | `GET /api/lens/resources/{id}` (one content byte window or entity) |
 | `whoami()` | `GET /api/lens/me` |
 | `ask(prompt, focus=)` | `POST /api/lens/ask` |
-| *capability probe* (guardrail) | `GET /api/lens/info` *(cached ~60s, advisory)* |
 
 ### Amplifier tools (thin shim → library method → endpoint)
 
@@ -217,9 +216,44 @@ own tool because it triggers server-side LLM spend.
 | `team_pulse_read(op="whoami")` | `whoami()` | `GET /api/lens/me` |
 | `team_pulse_read(op="status")` | `describe()` | *(local — no network, no secrets)* |
 | `team_pulse_write(op="submit_answer")` | `upload_answer()` | `POST /api/lens/answers` |
-| `team_pulse_write(op="download_corpus")` | `download_corpus()` | `GET /api/lens/corpus.zip` |
+| `team_pulse_write(op="download_corpus")` | `download_corpus()` | `GET /api/lens/corpus/download` |
 | `team_pulse_write(op="configure")` | `save_config()` | *(local — writes `~/.amplifier/team-pulse/config.yaml`)* |
 | `team_pulse_ask(prompt=…)` | `ask()` | `POST /api/lens/ask` |
+
+### Content retrieval and continuation
+
+`get()` returns the JSON envelope unchanged, including top-level
+`content_revision` and metadata `offset`, `returned_bytes`, `total_bytes`,
+`next_offset`, `truncated`. It makes **one request per call**, never auto-follows
+or assembles all pages. Content defaults to a **153600-byte UTF-8 window** when
+`limit=None` (the parameter is omitted), maximum **153600** bytes. Entities
+remain unpaged, with no content revision.
+
+```python
+async with client:
+    page = await client.get("corpus/<sub>/<page>.md")  # use a discovered exact ID
+    # Only if more text is needed and next_offset is not None:
+    next_page = await client.get(page["id"],
+        offset=page["metadata"]["next_offset"],
+        expected_revision=page["content_revision"])
+```
+
+The pin is `lens-text-v1:` + SHA-256 of the **full captured normalized served
+text** re-encoded as UTF-8, independent of window size. Indexed content search
+hits carry `content_revision` too. A source can change between search and GET;
+pass the hit's revision on the initial GET when that version is required.
+
+Nonzero byte offsets require `expected_revision`. A mismatch raises
+`TeamPulseAPIError(status=409)` with `source_changed` in its body. **No retry or
+unpinned fallback** is performed. Invalid paging inputs raise HTTP 422.
+`resources()`/`prefix()` paging uses record counts, preserves unbounded defaults,
+and retains the entire server envelope. Search has no offset/cursor; `count` is
+returned hits, not an exhaustive total. Search failures raise HTTP 503 instead
+of appearing as successful empty results.
+
+These parameters depend on the coordinated Lens app endpoint change
+([app #995](https://github.com/microsoft/amplifier-app-team-pulse/issues/995));
+they do not alter service auth/path/visibility rules or deploy the service.
 
 ---
 
