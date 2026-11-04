@@ -50,6 +50,14 @@ async TeamPulseClient.describe() -> ClientInfo
 
 ### Added
 
+- Keyword-only content GET `offset`, `limit`, `expected_revision`, with one
+  request per window and no automatic continuation/revision-conflict retry.
+  Pass through `content_revision` and all window metadata unchanged.
+- Optional record-count `limit`/`offset` for `resources` and `prefix`, retaining
+  unbounded defaults. Preserve extra list/search envelope metadata, including
+  search-hit content revisions. Amplifier read schemas and guidance match these
+  parameters; structured 409/422/503 errors retain their server codes.
+  Depends on the coordinated Lens endpoint change in app issue #995.
 - **Phase 0 initial library lift** — standalone `team-pulse-lib` package extracted from
   the Amplifier bundle into a zero-Amplifier-dependency Python library.  Installs via
   `pip install "team-pulse-lib @ git+https://...#subdirectory=team-pulse-lib"`.

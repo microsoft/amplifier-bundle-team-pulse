@@ -373,8 +373,8 @@ class TeamPulseClient:
         """Return a guaranteed {count: int, resources: list} dict.
 
         Non-dict body yields the empty envelope.  Missing or wrong-typed
-        ``resources`` / ``count`` fields are fixed up in-place so callers
-        always receive a well-formed envelope.
+        ``resources`` / ``count`` fields are fixed up so callers always receive
+        a well-formed envelope. Preserve all other server metadata.
         """
         if not isinstance(body, dict):
             return {"count": 0, "resources": []}
@@ -384,7 +384,7 @@ class TeamPulseClient:
         count = body.get("count")
         if not isinstance(count, int):
             count = len(resources)
-        return {"count": count, "resources": resources}
+        return {**body, "count": count, "resources": resources}
 
     # ------------------------------------------------------------------
     # Generic lens reads
@@ -418,6 +418,9 @@ class TeamPulseClient:
         type: str | None = None,  # noqa: A002
         collection: str | None = None,
         status: str | None = None,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> dict[str, Any]:
         """GET /api/lens/resources — list resources, optionally filtered.
 
@@ -428,23 +431,46 @@ class TeamPulseClient:
                 (server default), ``'archived'``, or ``'all'``.  Omitted when
                 falsy (server then applies its active-only default).  The server
                 ignores it for non-question types.
+            limit: Optional record-count limit. Omit to retain unbounded listing.
+            offset: Optional record offset (not a UTF-8 byte offset).
         """
-        params: dict[str, str] = {}
+        params: dict[str, Any] = {}
         if type:
             params["type"] = type
         if collection:
             params["collection"] = collection
         if status:
             params["status"] = status
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
         resp = await self._get("/api/lens/resources", params=params or None)
         return self._normalize_list_envelope(resp.json())
 
-    async def get(self, resource_id: str) -> Any:
-        """GET /api/lens/resources/{resource_id} — fetch a single resource.
+    async def get(
+        self,
+        resource_id: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+        expected_revision: str | None = None,
+    ) -> Any:
+        """GET /api/lens/resources/{resource_id} — fetch one resource/window.
+
+        One request only: never follows ``next_offset`` or retries a revision
+        conflict. Returns the full JSON envelope, including content_revision
+        and byte-window metadata. Structured entities are not paged.
 
         Args:
             resource_id: Full resource ID (e.g. ``'projects/team-pulse'``).
                 Leading slashes are stripped so both forms are accepted.
+            offset: UTF-8 byte offset (default 0); nonzero requires a revision pin.
+            limit: UTF-8 byte budget. None uses the server's 32768-byte default;
+                maximum 153600. The server validates bounds and UTF-8 boundaries.
+            expected_revision: Pin to the full served text's content_revision
+                (``lens-text-v1:`` + SHA-256). Mismatch raises HTTP 409
+                ``source_changed``; invalid paging arguments raise HTTP 422.
 
         Raises:
             ValueError: When *resource_id* is falsy.
@@ -452,7 +478,12 @@ class TeamPulseClient:
         if not resource_id:
             raise ValueError("resource_id is required")
         path = f"/api/lens/resources/{resource_id.lstrip('/')}"
-        resp = await self._get(path)
+        params: dict[str, Any] = {"offset": offset}
+        if limit is not None:
+            params["limit"] = limit
+        if expected_revision is not None:
+            params["expected_revision"] = expected_revision
+        resp = await self._get(path, params=params)
         return resp.json()
 
     async def whoami(self) -> Any:
@@ -484,12 +515,20 @@ class TeamPulseClient:
         resp = await self._get("/api/lens/resources/search", params=params)
         return self._normalize_list_envelope(resp.json())
 
-    async def prefix(self, prefix: str) -> dict[str, Any]:
+    async def prefix(
+        self,
+        prefix: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """GET /api/lens/resources/prefix/{prefix} — list resources by ID prefix.
 
         Args:
             prefix: ID prefix (e.g. ``'projects'``).  Required; raises
                 :exc:`ValueError` if falsy.  Leading slashes are stripped.
+            limit: Optional record-count limit. Omit to retain unbounded listing.
+            offset: Optional record offset (not a UTF-8 byte offset).
 
         Raises:
             ValueError: When *prefix* is falsy.
@@ -497,7 +536,12 @@ class TeamPulseClient:
         if not prefix:
             raise ValueError("prefix is required")
         path = f"/api/lens/resources/prefix/{prefix.lstrip('/')}"
-        resp = await self._get(path)
+        params = {}
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        resp = await self._get(path, params=params or None)
         return self._normalize_list_envelope(resp.json())
 
     async def ask(self, prompt: str, focus: str | None = None) -> Any:

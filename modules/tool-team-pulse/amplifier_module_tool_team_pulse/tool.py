@@ -28,6 +28,7 @@ model; they now serve as per-op documentation for maintainers.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from dataclasses import asdict, is_dataclass
@@ -155,8 +156,8 @@ def _error_result(exc: Exception) -> "ToolResult":
        ``amplifier_module_tool_team_pulse.client.TeamPulseAPIError`` which
        carries the lens API error envelope directly.
 
-    2. ``team_pulse_lib.TeamPulseAPIError`` (new-lib style, no ``.envelope``)
-       → ``{code: 'api_error', message, status}``.
+    2. ``team_pulse_lib.TeamPulseAPIError`` — preserve the server's structured
+       error, falling back to ``{code: 'api_error', message, status}``.
 
     3. ``TeamPulseConnectionError`` → ``{code: 'transport_error', status: 0}``.
 
@@ -178,6 +179,13 @@ def _error_result(exc: Exception) -> "ToolResult":
 
     # 2–4. team_pulse_lib typed exception hierarchy (specific → general)
     if isinstance(exc, TeamPulseAPIError):
+        try:
+            body = json.loads(exc.body)
+        except (TypeError, ValueError):
+            body = None
+        server_error = body.get("error") if isinstance(body, dict) else None
+        if isinstance(server_error, dict):
+            return ToolResult(success=False, error={"status": exc.status, **server_error})
         return ToolResult(
             success=False,
             error={
@@ -365,6 +373,16 @@ class TeamPulseResourcesTool(_LensTool):
                         "both. Invalid values -> 400."
                     ),
                 },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional record-count limit; omitted means unbounded.",
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Optional record offset.",
+                },
             },
             "additionalProperties": False,
         }
@@ -374,6 +392,7 @@ class TeamPulseResourcesTool(_LensTool):
             type=input.get("type"),
             collection=input.get("collection"),
             status=input.get("status"),
+            **{key: input[key] for key in ("limit", "offset") if key in input},
         )
         return ToolResult(success=True, output=output)
 
@@ -446,13 +465,26 @@ class TeamPulsePrefixTool(_LensTool):
                     "type": "string",
                     "description": "ID prefix, e.g. 'projects' or 'members'.",
                 },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional record-count limit; omitted means unbounded.",
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Optional record offset.",
+                },
             },
             "required": ["prefix"],
             "additionalProperties": False,
         }
 
     async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
-        output = await client.prefix(input["prefix"])
+        output = await client.prefix(
+            input["prefix"],
+            **{key: input[key] for key in ("limit", "offset") if key in input},
+        )
         return ToolResult(success=True, output=output)
 
 
@@ -543,13 +575,31 @@ class TeamPulseGetTool(_LensTool):
                     "type": "string",
                     "description": "Full resource ID (e.g. 'projects/team-pulse').",
                 },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "UTF-8 byte offset; nonzero requires expected_revision.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 153600,
+                    "description": "UTF-8 byte budget; server default 32768.",
+                },
+                "expected_revision": {
+                    "type": "string",
+                    "description": "Pin to content_revision; 409 source_changed is not retried.",
+                },
             },
             "required": ["id"],
             "additionalProperties": False,
         }
 
     async def _call(self, client: Any, input: dict[str, Any]) -> "ToolResult":
-        output = await client.get(input["id"])
+        output = await client.get(
+            input["id"],
+            **{key: input[key] for key in ("offset", "limit", "expected_revision") if key in input},
+        )
         return ToolResult(success=True, output=output)
 
 
@@ -587,14 +637,9 @@ class TeamPulseAskTool(_LensTool):
 
     name = "team_pulse_ask"
     description = (
-        "`ask` is server-side ONLINE GENERATION: a Team Pulse LLM composes a "
-        "bounded answer over current team data. "
-        "PREFER THE READ TOOLS BY DEFAULT "
-        "(team_pulse_info / team_pulse_search / team_pulse_get / team_pulse_resources): "
-        "answer Team Pulse questions by reading the corpus and composing the response "
-        "yourself — they are cheaper, return full-fidelity data, and you are already "
-        "an LLM that can synthesize from raw reads. "
-        "Call team_pulse_ask ONLY when the user explicitly directs Team Pulse to answer."
+        "Server-side ONLINE GENERATION (LLM spend). PREFER THE READ TOOLS "
+        "(team_pulse_read) and compose from retrieved passages. "
+        "Call ONLY when the user explicitly directs Team Pulse to answer."
     )
 
     @property
@@ -961,16 +1006,13 @@ class TeamPulseReadTool(_OpTool):
 
     name = "team_pulse_read"
     description = (
-        "Read Team Pulse data; `op` picks the read. "
-        "get: one resource by full id '<type>/<slug>'. "
-        "search: substring search. "
-        "prefix: every id under a path prefix, e.g. 'projects'. "
-        "resources: list, optional type/collection filter. "
-        "info: the SERVER's self-description (resource_types, collections); check "
-        "it before assuming a type exists. "
-        "whoami: server-verified caller identity, for 'me'/'my'. "
-        "status: THIS client's local config — no network, no secrets, works when "
-        "auth is broken."
+        "Discover with info (enabled collections/types, HTTP capabilities, NOT permission); "
+        "scoped search/browse, then get selected exact IDs. get: one page/request; inspect "
+        "content_revision + metadata.truncated/next_offset. Continue only if needed with "
+        "exact next_offset + expected_revision. Never auto-retry 409 source_changed. "
+        "Cite consulted passages/limits; snippets are not full reads; search count is "
+        "returned hits, not exhaustive total. Zero hits != 503 error. resources/prefix: "
+        "record listings, unbounded unless limited. whoami: /me for 'my'. status: local config."
     )
 
     _OPS = {
@@ -1005,8 +1047,16 @@ class TeamPulseReadTool(_OpTool):
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 200,
-                    "description": "op=search: max results (default 50).",
+                    "description": "get: UTF-8 bytes (default 32768, max 153600); search: hits (default 50, max 200); resources/prefix: records.",
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "get: UTF-8 bytes (default 0); resources/prefix: records. Not search.",
+                },
+                "expected_revision": {
+                    "type": "string",
+                    "description": "get: content_revision pin, required for nonzero offset; mismatch 409.",
                 },
                 "prefix": {
                     "type": "string",
@@ -1029,6 +1079,15 @@ class TeamPulseReadTool(_OpTool):
             "required": ["op"],
             "additionalProperties": False,
         }
+
+    async def execute(self, input: dict[str, Any]) -> "ToolResult":
+        for key, ops in (
+            ("offset", ("get", "resources", "prefix")),
+            ("expected_revision", ("get",)),
+        ):
+            if key in input and input.get("op") not in ops:
+                return self._invalid(f"{key} is only supported for: {', '.join(ops)}.")
+        return await super().execute(input)
 
 
 class TeamPulseWriteTool(_OpTool):

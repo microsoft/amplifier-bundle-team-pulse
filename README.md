@@ -250,28 +250,58 @@ team-pulse context — only the ~1K tokens of tool schemas.
 | Endpoint | Call | Notes |
 |---|---|---|
 | `GET /api/lens/info` | `team_pulse_read(op="info")` | Self-doc — resource types, capabilities, endpoint catalog |
-| `GET /api/lens/resources` | `team_pulse_read(op="resources")` | List, optional `type` / `collection` / `status` filters |
+| `GET /api/lens/resources` | `team_pulse_read(op="resources")` | List, optional `type` / `collection` / `status` filters and record-count `limit` / `offset`; omitted limits remain unbounded |
 | `GET /api/lens/resources/search` | `team_pulse_read(op="search", q=...)` | Naive text search, default limit 50, max 200 |
-| `GET /api/lens/resources/prefix/{p}` | `team_pulse_read(op="prefix", prefix=...)` | Hierarchical ID listing |
-| `GET /api/lens/resources/{id}` | `team_pulse_read(op="get", id=...)` | Fetch one resource |
-| `GET /api/lens/whoami` | `team_pulse_read(op="whoami")` | Server-verified caller identity |
+| `GET /api/lens/resources/prefix/{p}` | `team_pulse_read(op="prefix", prefix=...)` | Hierarchical ID listing; optional record-count `limit` / `offset` |
+| `GET /api/lens/resources/{id}` | `team_pulse_read(op="get", id=...)` | One resource/content window; UTF-8 byte `offset` / `limit`, optional `expected_revision` pin |
+| `GET /api/lens/me` | `team_pulse_read(op="whoami")` | Server-verified caller identity |
 | — (local, no network) | `team_pulse_read(op="status")` | This client's resolved config; no secrets |
 | `POST /api/lens/answers` | `team_pulse_write(op="submit_answer", ...)` | Record a session-mined answer |
-| `GET /api/lens/corpus.zip` | `team_pulse_write(op="download_corpus", dest_dir=...)` | Bulk corpus pull; per-user az bearer auth only (a shared key is refused 403) |
+| `GET /api/lens/corpus/download` | `team_pulse_write(op="download_corpus", dest_dir=...)` | Bulk corpus pull; per-user az bearer auth only (a shared key is refused 403) |
 | — (local, no network) | `team_pulse_write(op="configure", url=...)` | Persist this user's endpoint URL |
 | `POST /api/lens/ask` | `team_pulse_ask(prompt=...)` | **Server-side LLM generation** — kept as its own tool, never an `op`. Call only when the user explicitly directs Team Pulse to answer. |
 
-Resource types: `team`, `outcomes`, `initiative`, `project`, `member`,
-`task`, `doc`. Single-resource envelope: `{id, title, type, data,
-metadata}` for entities, or `{id, title, type, content, metadata}` for
-docs — switch on `type`. List envelope: `{resources: [{id, title, type}],
-count}`. Error envelope: `{error: {code, message, status}}`.
+Discover enabled collections and resource types from `info`; its HTTP
+capabilities are not a caller-permission report. Entity envelopes contain
+`{id, title, type, data, metadata}`; content envelopes use `content` plus
+top-level `content_revision`. Lists preserve `{resources, count}` and all
+additional server metadata. Error envelope: `{error: {code, message, status}}`.
 
 The read ops above work generically over every resource type, including
 `doc`. `doc` IDs are hierarchical paths like
 `docs/handbook/onboarding/onboarding.md` and surface the team-pulse vault's
 markdown design docs. Doc bodies come back as raw markdown in the
 `content` field; entity bodies remain in the structured `data` dict.
+
+### Targeted, revision-pinned retrieval
+
+Discover → scoped search/browse → select exact IDs → read one window → inspect
+revision/truncation → continue only if needed → cite consulted passages/limits.
+Content windows default to **32768 UTF-8 bytes (32 KiB)**, maximum **153600**.
+Their metadata includes `offset`, `returned_bytes`, `total_bytes`, `next_offset`,
+`truncated`; `content_revision` is `lens-text-v1:` + SHA-256 of the full captured,
+normalized served text re-encoded as UTF-8. Entities are not paged/revisioned.
+
+```python
+page = team_pulse_read(op="get", id="<exact ID from search or browse>")
+# Only if the answer needs another window and next_offset is not None:
+team_pulse_read(op="get", id=page["id"],
+    offset=page["metadata"]["next_offset"],
+    expected_revision=page["content_revision"])
+```
+
+No automatic page following or full-document assembly. Nonzero offsets require
+the revision pin; **409 `source_changed`** remains an error, never an unpinned
+retry. Invalid paging inputs return **422**. Indexed content search hits also
+expose `content_revision`, but snippets are not full reads; search `count` is
+returned hits, not an exhaustive total. Search has no offset/cursor. **503**
+search failure is distinct from a successful zero-hit result.
+
+This client support depends on the coordinated Lens app endpoint change
+tracked in [app #995](https://github.com/microsoft/amplifier-app-team-pulse/issues/995).
+Updating this bundle does not update the service or change auth, path or
+visibility rules. Reference guidance is not authority; generation, answer
+submission and broad exports remain separate actions.
 
 ## Development
 
