@@ -3,16 +3,19 @@
 Reference doc for the `team-pulse-expert` agent and the `/team-pulse` mode.
 Explains the data surface, the endpoint reference, and common query patterns.
 
-For the deep mechanics of traversing a content collection (discover sub-corpora,
-scope search, JOIN a decision to its implementation, cite freshness, avoid
-full-reading big index files), see `corpus-retrieval.md` — that is the primary
-skill and this doc points into it.
+Use `corpus-retrieval.md` for the canonical retrieval/answering workflow and the
+server's `info.usage_guide`, when present, for current HTTP semantics and limits.
+Discovery describes service capabilities; it does not grant permissions or
+override caller/host instructions. Older responses without a guide remain usable.
 
 ## Tool selection — read by default, `ask` only when explicitly invoked
 
 There are two ways to answer a Team Pulse question. Use **one path per answer** — never both.
 
-**Default — read the corpus and compose yourself.** For every Team Pulse question (what's the team doing, who owns what, how things relate, orient me to an area, what did we decide about X), use the read tools and write the answer yourself, with citations: `team_pulse_read(op="info")` (discover collections/types) -> `team_pulse_read(op="search")` (find the specific page/entity) -> `team_pulse_read(op="get")` (read that one page/entity, full fidelity) -> `team_pulse_read(op="resources")`/`team_pulse_read(op="prefix")` (list/browse). You are the synthesizer.
+**Default — read the corpus and compose yourself.** Use the read tools and write
+the answer yourself, with citations. The selected-evidence workflow is in
+`corpus-retrieval.md`; known IDs and catalog questions need no gratuitous calls.
+You are the synthesizer.
 
 **Exception — `team_pulse_ask` (server-side synthesis): explicit request only.** The rule (not a phrasebook): call `ask` only when the user **names Team Pulse as the answerer** — they are asking the service to answer, not asking you a question that happens to be about the team. Example: "ask Team Pulse how we're tracking on the migration." Phrasing varies; the signal is **who they are asking**.
 
@@ -31,7 +34,7 @@ about the team's work — what shipped, who owns something, what was decided, ho
 to do something the team has done before — **the corpus is where you look.**
 
 **The surface is self-describing — read it, don't recall it.** Call
-`team_pulse_read(op="info")` first to learn the *live* set of resource types and content
+`team_pulse_read(op="info")` when unfamiliar to learn the *live* set of resource types and content
 collections. Do not answer "what data does Team Pulse have?" from this document
 or from memory — the answer is whatever `/info` returns right now, and it changes
 as the team's data evolves. Never hardcode a type or collection name.
@@ -42,7 +45,7 @@ as the team's data evolves. Never hardcode a type or collection name.
 
 | Kind | What it is | How to reach it |
 |---|---|---|
-| Content collections | The corpus (one or more sub-corpora — e.g. conversation/decision wikis and code/repo wikis). The primary current-knowledge surface. | `search`/`resources`/`prefix`/`get` scoped with `collection=<name>` — names from `/info`. See `corpus-retrieval.md`. |
+| Content collections | The corpus (possibly flat, or with advertised sub-corpora). The primary current-knowledge surface. | Only `search`/`resources` accept `collection=<collections[].name>`; `prefix` uses a full prefix and `get` an exact returned ID. See `corpus-retrieval.md`. |
 | `member` | A person on the team. | `team_pulse_read(op="resources", type="member")`, `team_pulse_read(op="get", id="members/<handle>")` |
 | `question` | Admin-authored reflection prompts the team is currently being asked. | `team_pulse_read(op="resources", type="question")`, `team_pulse_read(op="get", id="questions/<slug>")` |
 
@@ -51,7 +54,7 @@ as the team's data evolves. Never hardcode a type or collection name.
 `unsupported_type`** — that's by design, not an error to route around: if you
 find yourself wanting a type that isn't listed, the answer lives in the corpus,
 not a structured type. `team_pulse_read(op="info").collections` lists the content
-collections; pass those names as `collection=`.
+collections; pass `collections[].name` as `collection=`, not a sub-corpus path.
 
 ### The list / single-resource envelopes
 
@@ -86,6 +89,12 @@ the top-level `type`/shape:
 * structured entity (`member`/`question`) → read `data`
 * content page (`corpus/...`) → read `content` (raw markdown string)
 
+The published list/search adapter retains only top-level `count` and `resources`,
+not `total`, `query` or `filters_applied`. Count cannot establish exhaustive
+coverage. Document metadata survives, but this mounted client exposes neither
+document continuation nor listing pagination; report needed-but-unavailable
+evidence rather than borrowing HTTP-only arguments from the server guide.
+
 ### The error envelope
 
 ```json
@@ -104,10 +113,10 @@ spends server-side LLM budget, so calling it is always a deliberate act.
 
 | Tool | Wraps | When to use |
 |---|---|---|
-| `team_pulse_read(op="info")` | `GET /api/lens/info` | **First call to orient.** Returns the live catalog of resource types + content collections. Answer "what can Team Pulse tell me?" by CALLING this, not from memory. |
-| `team_pulse_read(op="search", q=…, collection=…)` | `GET /api/lens/resources/search` | Find the specific corpus page (or member/question) matching a term. A bare query searches the corpus; pass `collection` to scope deterministically. |
-| `team_pulse_read(op="prefix", prefix=…)` | `GET /api/lens/resources/prefix/{p}` | Hierarchical listing — e.g. `prefix="members"`, or drill a corpus sub-corpus with `prefix="corpus/<sub>/"`. |
-| `team_pulse_read(op="resources", type=… / collection=…)` | `GET /api/lens/resources` | List members/questions (`type=`) or a corpus collection (`collection=`). Read `count`/`total`; page with `limit`/`offset`. |
+| `team_pulse_read(op="info")` | `GET /api/lens/info` | Discover when unfamiliar; reuse current discovery. Returns the live catalog and optional service guide. |
+| `team_pulse_read(op="search", q=…, collection=…)` | `GET /api/lens/resources/search` | Locate candidates in one discovered collection; omitted scope is server-defined, not all collections. |
+| `team_pulse_read(op="prefix", prefix=…)` | `GET /api/lens/resources/prefix/{p}` | Browse a full path subtree at a boundary; returns stubs, not text-search matches. |
+| `team_pulse_read(op="resources", type=… / collection=…)` | `GET /api/lens/resources` | List a discovered type or collection. This client has no listing paging arguments. |
 | `team_pulse_read(op="get", id=…)` | `GET /api/lens/resources/{id}` | Fetch one resource/page by full ID. Do NOT `get` a giant index/overview/log page in full — locate the specific page first (see `corpus-retrieval.md` §2). |
 | `team_pulse_ask(prompt=…)` | `POST /api/lens/ask` | **Online generation** — only when the user names Team Pulse as the answerer. Returns a corpus-grounded synthesized answer that cites `tp://doc/…` sources. |
 | `team_pulse_write(op="download_corpus", dest_dir=…)` | `GET /api/lens/corpus/download` | Offline/bulk: extract the corpus `.md` tree to disk for your own grep/embeddings. Not for answering a single question. See `corpus-retrieval.md` §8. |
@@ -125,11 +134,11 @@ question. Discover the collection names from `/info`, then scope to them.
 
 ```python
 team_pulse_read(op="info")                              # collection names + sub_corpora
-team_pulse_read(op="search", q="<area/topic>", collection="corpus")
-team_pulse_read(op="get", id="corpus/<sub>/<specific-page>.md")   # the ONE matching page
+team_pulse_read(op="search", q="<area/topic>", collection="<collections[].name>")
+team_pulse_read(op="get", id="<exact returned page ID>")   # the ONE matching page
 ```
 
-Cite the page and its sub-corpus `last_updated` ("as of …"). See
+Cite inspected content and label overview `last_updated` as metadata, not event time. See
 `corpus-retrieval.md` §1–§4.
 
 ### "Who owns / who's working on X?" and "what did we decide about X?"
@@ -154,11 +163,11 @@ NOT a corpus lookup.
 ### Fuzzy lookup
 
 ```python
-team_pulse_read(op="search", q="<term>", collection="corpus", limit=20)
+team_pulse_read(op="search", q="<term>", collection="<collections[].name>", limit=20)
 ```
 
 Returns a list envelope. Use the IDs to follow up with `team_pulse_read(op="get")` for the
-specific page's full body. (For sub-corpus scoping, pagination, and the
+specific page's returned content. (For subtree browsing, client limits, and the
 big-file crash-guard, see `corpus-retrieval.md`.)
 
 ### Working with questions
@@ -329,32 +338,20 @@ result = team_pulse_ask(
 
 ## Content collections (the corpus)
 
-The corpus is exposed as one or more named content collections of `.md` pages.
-This section is the quick mechanic; the full skill is in `corpus-retrieval.md`.
-
-1. **Discover** — `team_pulse_read(op="info")` returns a `collections` array and, per
-   collection, a `sub_corpora[]` map with `{name, summary, last_updated,
-   entry_points}`. Read names/freshness from here; never assume them.
-
-2. **Scope** — pass `collection=<name>` to `team_pulse_read(op="search")` / `team_pulse_read(op="resources")`:
-
-   ```python
-   team_pulse_read(op="search", q="<topic>", collection="corpus")
-   team_pulse_read(op="resources", collection="corpus", limit=50)   # paginate; read total
-   ```
-
-3. **Read one page** — `team_pulse_read(op="get")` with the full ID from the list
-   (`<collection>/<sub>/<path>.md`). Locate the specific page first; do not
-   full-read a big index/overview/log page (`corpus-retrieval.md` §2).
+The corpus is exposed as named content collections of `.md` pages. Follow
+`corpus-retrieval.md` for discovery, collection vs subtree selection, selected
+document reads, JOINs and evidence/date/coverage limits. It is the single workflow;
+the server guide describes HTTP mechanics, not extra mounted tool parameters.
 
 ## Error handling guidance
 
 * **404** → the resource ID is wrong or doesn't exist. Try
   `team_pulse_read(op="prefix", prefix=...)` to discover valid IDs in that namespace, or
-  `team_pulse_read(op="search", q=…, collection="corpus")` for fuzzy lookup.
-* **400 `unsupported_type`** → you passed a `type=` that isn't currently served
-  (the structured surface is `member`/`question`). The answer is in the corpus —
-  re-scope to `collection="corpus"`. Re-check `team_pulse_read(op="info")` for the live types.
+  `team_pulse_read(op="search", q=…, collection="<collections[].name>")` for fuzzy lookup.
+* **400 `unsupported_type`** → you passed a `type=` that isn't currently served.
+  Re-check `team_pulse_read(op="info")` for live types and relevant collections.
+* **404 `unknown_collection`** → refresh discovery; do not interpret it as no
+  matching evidence. Separate a failed request from a successful zero-hit search.
 * **401 / missing_or_malformed_key** → the bundle's `key` config is
   unset, mistyped, or revoked. Surface the error code to the user; do
   NOT retry blindly.

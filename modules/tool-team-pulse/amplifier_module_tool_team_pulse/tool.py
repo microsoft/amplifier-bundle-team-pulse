@@ -961,16 +961,11 @@ class TeamPulseReadTool(_OpTool):
 
     name = "team_pulse_read"
     description = (
-        "Read Team Pulse data; `op` picks the read. "
-        "get: one resource by full id '<type>/<slug>'. "
-        "search: substring search. "
-        "prefix: every id under a path prefix, e.g. 'projects'. "
-        "resources: list, optional type/collection filter. "
-        "info: the SERVER's self-description (resource_types, collections); check "
-        "it before assuming a type exists. "
-        "whoami: server-verified caller identity, for 'me'/'my'. "
-        "status: THIS client's local config — no network, no secrets, works when "
-        "auth is broken."
+        "Read Team Pulse data. info: discover collections/types and server usage_guide when unfamiliar. "
+        "search: text query. prefix: list a path subtree, not text search. "
+        "get: read selected IDs before document-backed answers; snippets are pointers. "
+        "resources: list. Use separate calls across collections. "
+        "whoami: server identity for 'me/my'. status: local config; no network/secrets."
     )
 
     _OPS = {
@@ -995,12 +990,12 @@ class TeamPulseReadTool(_OpTool):
                 },
                 "id": {
                     "type": "string",
-                    "description": "op=get: full id, e.g. 'members/jdoe'.",
+                    "description": "op=get: exact returned resource ID, not a directory.",
                 },
                 "q": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "op=search: query string.",
+                    "description": "op=search: text query; matching semantics in info.usage_guide.",
                 },
                 "limit": {
                     "type": "integer",
@@ -1010,15 +1005,18 @@ class TeamPulseReadTool(_OpTool):
                 },
                 "prefix": {
                     "type": "string",
-                    "description": "op=prefix: id prefix, e.g. 'projects'.",
+                    "description": "op=prefix: full path subtree at a path boundary; lists IDs, not bodies.",
                 },
                 "type": {
                     "type": "string",
-                    "description": "op=resources: type filter; unknown -> 400.",
+                    "description": "op=resources: info.resource_types value; unknown -> 400.",
                 },
                 "collection": {
                     "type": "string",
-                    "description": "op=search|resources: collection, e.g. 'docs'.",
+                    "description": (
+                        "op=search|resources: one info.collections[].name, never a subtree. "
+                        "Omitted search scope is server-defined, not all collections."
+                    ),
                 },
                 "status": {
                     "type": "string",
