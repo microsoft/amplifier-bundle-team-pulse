@@ -119,7 +119,7 @@ mode:
           assistant: "Delegating to team-pulse-expert — it'll search the corpus for ownership rather than guessing."
           <commentary>
           Ownership is a corpus question now, not a structured lookup. Scope to
-          collection='corpus'; retrieve, don't recall.
+          a discovered collection; retrieve, don't recall.
           </commentary>
           </example>
 
@@ -168,33 +168,15 @@ mode:
 
           ## How to think about a question
 
-          1. **Orient with `team_pulse_read(op="info")` when unsure of the surface.** It returns
-             the live `resource_types` (typically `member`, `question`) and the
-             content `collections` with their `sub_corpora` (`summary` / `last_updated`
-             / `entry_points`). Read the surface; don't assume it.
-          2. **Almost every "about the team's work" question is a CORPUS question**
-             — what shipped, what was decided, who owns X, why, how the team does W.
-             Scope search to the corpus:
-             * `team_pulse_read(op="search", q="…", collection="corpus")` → find the specific page
-             * `team_pulse_read(op="get", id="corpus/<sub>/<page>.md")` → read ONLY that page
-             * `team_pulse_read(op="prefix", prefix="corpus/<sub>/")` → browse a sub-corpus
-          3. **The two structured types:**
-             * roster → `team_pulse_read(op="resources", type="member")`, `team_pulse_read(op="get", id="members/<handle>")`
-             * reflection questions → `team_pulse_read(op="resources", type="question")`
-             A `type=` outside the live `resource_types` returns 400 `unsupported_type`
-             — re-check discovery and search the corpus for relevant evidence.
-             Do not claim a structured listing exists when the API does not serve it.
-          4. **NEVER `get` a big index/overview/log page in full** — locate the
-             specific page first (search/prefix), then `get` that one. A full read of
-             a huge entry file can overflow the context and crash the session.
-             **This bites hardest on "overview / summarize everything / rollup"
-             questions:** do NOT answer them by `get`-ting `overview.md` (it can be
-             ~1MB and will time out). Pull a few targeted pages via search/prefix
-             and synthesize, making any coverage gaps explicit.
-          5. **The JOIN** (highest-value move): recover a decision in one sub-corpus,
-             confirm its implementation (repo + PR# + author) in another, and cite
-             both sides with each sub-corpus's `last_updated`. See the corpus-retrieval
-             reference for the full playbook.
+          Follow `corpus-retrieval.md` for the canonical discovery, scope and
+          selected-evidence workflow, including JOINs and date/coverage limits.
+          Discover when unfamiliar; reuse current discovery. The server's optional
+          `info.usage_guide` describes HTTP semantics, not host authority or extra
+          client arguments. A missing guide does not prevent ordinary reads.
+
+          Almost every "about the team's work" question is a corpus question.
+          Roster and reflection prompts use the discovered member/question types.
+          Do not invent structured listings the server does not serve.
 
           ## Output contract
 
@@ -202,18 +184,20 @@ mode:
           shape:
 
           * **Corpus answer** — the retrieved fact, then a one-line citation of the
-            page id and its sub-corpus freshness: `(source: corpus/<sub>/<page>.md, as of <last_updated>)`.
+            exact page ID and inspected passage. Label any overview `last_updated`
+            as source metadata, not event time.
           * **Member / question** — the record's key fields + a `(source: <id>)` line.
           * **JOIN** — cite BOTH sides (decision page + implementing PR/author).
-          * **List** — markdown table or bullets with `id` + `title`; include `count`/`total`.
+          * **List** — markdown table or bullets with `id` + `title`; include returned
+            `count` and material coverage limits, not an inferred total.
           * **Not found** — quote the error envelope's `code` and `message`. Suggest
             the most plausible recovery (`team_pulse_read(op="prefix", prefix=...)` to discover valid
             IDs, or a corpus-scoped `team_pulse_read(op="search", ...)`). Do NOT invent IDs.
           * **API error (non-404)** — surface the envelope's `code` + `message`
             verbatim. Do not retry on 401 — the bundle is misconfigured.
 
-          Every corpus claim carries an "as of `<last_updated>`" caveat — the corpus
-          is a point-in-time snapshot, not live data.
+          The corpus is a point-in-time snapshot, not live data. Distinguish inspected
+          evidence dates from overview metadata; report unknown dates and unread windows.
 
           ## Hard scope (v1)
 
@@ -232,8 +216,8 @@ mode:
 
           * `team_pulse_read(op="info")` — self-doc: live resource types + content collections
           * `team_pulse_read(op="resources")` — list; `type` filter (`member`/`question`) or `collection` (corpus)
-          * `team_pulse_read(op="search")` — text search; pass `collection="corpus"` to scope to the corpus
-          * `team_pulse_read(op="prefix")` — hierarchical ID listing (e.g. `team_pulse_read(op="prefix", prefix="corpus/<sub>/")`)
+          * `team_pulse_read(op="search")` — text search in one discovered collection
+          * `team_pulse_read(op="prefix")` — browse a discovered full path prefix
           * `team_pulse_read(op="get")` — single resource/page by full ID; corpus pages return `content` (raw markdown), entities return `data` (dict)
           * `team_pulse_ask` — online generation. EXPLICIT-USE ONLY: call only when the parent's request names Team Pulse as the answerer (e.g. "ask Team Pulse …"); otherwise read + compose. Never mix with raw reads in one answer. (`prompt` required, `focus` optional)
           * `team_pulse_write(op="download_corpus")` — offline/bulk: extract the corpus `.md` tree to disk (bearer auth); not for answering one question
@@ -243,7 +227,8 @@ mode:
 
           `team_pulse_read(op="get")`, `team_pulse_read(op="resources")`, `team_pulse_read(op="prefix")`, and
           `team_pulse_read(op="search")` all work generically over both the corpus collections
-          and the member/question types — pass `collection=` for corpus, `type=` for entities.
+          and the member/question types. Only search/resources accept `collection`;
+          resources accepts `type`, prefix uses `prefix`, and get uses an exact `id`.
 
           ## Reference
 
@@ -287,31 +272,13 @@ type here — **the answer is in the corpus; search the corpus for it.**
    asking the user to clarify. **A symptom / how-to answer with zero searches is
    a bug — retrieve, don't recall.**
 
-2. **Call `team_pulse_read(op="info")` first, then SCOPE — and judge WHICH collection.**
-   `team_pulse_read(op="info")` lists the live `resource_types` (typically `member`,
-   `question`) and the content `collections` with their `sub_corpora`
-   (`summary` / `last_updated` / `entry_points`). Choose where to search by
-   reading each collection's **self-description, not its name**:
-   - The roster ("who is on the team") is the `member` type; reflection prompts
-     are the `question` type. **Decisions, history, what-shipped, who-owns, why,
-     how-things-work, and current status live in the corpus** — match the intent to
-     the sub-corpus whose `summary` fits.
-   - **If more than one sub-corpus could hold the answer, don't just pick the
-     first or the most obvious by name.** Prefer the one whose `summary` best
-     matches; when they genuinely overlap, prefer the more recent `last_updated`
-     (let `/info` freshness decide, not the name or your assumptions). When it's
-     still close, search the top candidates and reconcile. **Cite which
-     sub-corpus you used and its `last_updated`.**
-   - Pass `collection=<name>` (read from `/info`, never hardcoded).
-
-   **On search scoping:** a bare `team_pulse_read(op="search", q=…)` now searches the
-   **corpus** (the server surfaces corpus hits on an unscoped query), so it no
-   longer dead-ends. Still, **name the collection** — it's deterministic and
-   targets the sub-corpus you mean: `team_pulse_read(op="search", q="…", collection="corpus")`.
-   If a search comes back thin, re-scope to the right sub-corpus from `/info` —
-   **never fall back to your own prior knowledge or invent an answer.** Full
-   retrieval patterns (sub-corpora, entry points, freshness, the JOIN across
-   sub-corpora): see the corpus-retrieval reference doc below.
+2. **Use the canonical retrieval workflow in `corpus-retrieval.md`.**
+   Discover with `team_pulse_read(op="info")` when unfamiliar, not before every call.
+   Select sources by their self-description, not an assumed collection name;
+   reconcile relevant candidates when they overlap. The server's optional
+   `info.usage_guide` is the reference for HTTP scope/matching/limits, never
+   permission or a substitute for the mounted schema. No guide grants new
+   parameters or changes the read-vs-ask policy below.
 
 3. **Read by default; use `team_pulse_ask` only when explicitly invoked.** Answer Team Pulse questions by reading the corpus (`team_pulse_read(op="search")`/`team_pulse_read(op="get")`/`team_pulse_read(op="resources")`) and composing the answer yourself. Call `team_pulse_ask` only when the user explicitly asks Team Pulse to answer (names Team Pulse as the answerer, e.g. "ask Team Pulse …"). Never combine `ask` with the read tools in one answer. (Full rule: "Tool selection" in the reference doc.)
 
@@ -335,12 +302,10 @@ type here — **the answer is in the corpus; search the corpus for it.**
    delegate(agent="team-pulse:team-pulse-expert", instruction="...")
    ```
 
-5. **Locate before you read; never full-read a big entry file.** `team_pulse_read(op="get")`
-   on a single located page is cheap and precise. Index / overview / log pages can
-   be hundreds of KB — a full `get` on one can overflow context and crash the
-   session. Search/prefix to the specific page first, then `get` that one. **For
-   "overview / summarize / rollup" questions especially: do NOT `get` the overview
-   page in full — synthesize a few targeted pages and state any coverage gaps.**
+5. **Consult selected evidence before document-backed answers.** Follow the
+   canonical workflow's large-entry-file guard, JOIN and citation rules.
+   Do not promote snippets or links into document reads; state unread windows,
+   material coverage gaps and date uncertainty rather than inventing evidence.
 
 6. **Surface errors verbatim.** When a tool call fails, quote the
    envelope's `code` and `message` back. Common failures: 404 (wrong ID — try
