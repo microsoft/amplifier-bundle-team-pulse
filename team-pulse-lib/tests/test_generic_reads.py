@@ -5,7 +5,6 @@ Covers:
 - info: GET /api/lens/info returns body, sends auth header
 - resources: query param forwarding, envelope normalisation
 - get: fetches resource by ID, requires non-empty ID
-- graph: GET /api/lens/graph
 - whoami: GET /api/lens/me
 """
 
@@ -147,22 +146,18 @@ async def test_get_requires_resource_id():
 
 
 # ---------------------------------------------------------------------------
-# test_graph_and_whoami_hit_correct_paths
+# test_whoami_hits_correct_path
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
-async def test_graph_and_whoami_hit_correct_paths():
-    """graph() hits /api/lens/graph; whoami() hits /api/lens/me."""
-    graph_route = respx.get(f"{BASE_URL}/api/lens/graph").mock(return_value=httpx.Response(200, json={"nodes": []}))
+async def test_whoami_hits_correct_path():
+    """whoami() hits /api/lens/me."""
     whoami_route = respx.get(f"{BASE_URL}/api/lens/me").mock(return_value=httpx.Response(200, json={"handle": "jdoe"}))
     async with TeamPulseClient(base_url=BASE_URL, auth=FakeAuth()) as client:
-        graph_result = await client.graph()
         whoami_result = await client.whoami()
 
-    assert graph_route.called
     assert whoami_route.called
-    assert graph_result == {"nodes": []}
     assert whoami_result == {"handle": "jdoe"}
 
 

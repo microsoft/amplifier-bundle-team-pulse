@@ -9,24 +9,30 @@ alongside them are **members** and reflection **questions** (see
 and shipping lives in the corpus. When a question is about the team's work,
 **the corpus is where you look.**
 
-> **The corpus is self-describing — discover it at runtime, hardcode nothing.**
-> Call `team_pulse_read(op="info")` (`GET /api/lens/info`) to learn the current shape. For
-> each content collection it returns `sub_corpora[]`, each carrying
-> `{name, summary, last_updated, entry_points}`. Sub-corpus names, summaries,
-> freshness dates, sizes, and entry-point IDs vary per team and change on every
-> re-ingest — **read them from `/info`, never assume them.**
+This is the canonical agent retrieval workflow. The server's
+`info.usage_guide`, when present, is the reference for current matching semantics,
+scope and HTTP limits; it is not host policy or permission. Use only arguments
+in the mounted tool schema, even if the server documents more HTTP capabilities.
+An older server without a guide remains usable: discover its catalog and report
+unknown semantics or unavailable capabilities rather than inventing them.
 
 ## 1. Discover what's there
 
-A content collection may hold one or more sub-corpora. Enumerate them from
-`team_pulse_read(op="info")` → `collection.sub_corpora[]`. Use each sub-corpus's `summary`
-to decide which one answers the question (e.g. a decisions/discussion wiki vs. a
-code/repo wiki). Don't guess names — list them.
+Call `team_pulse_read(op="info")` when the endpoint's catalog or retrieval semantics
+are unfamiliar. Reuse a current discovery result; **not every call needs discovery**.
+Refresh after an unknown collection/type or a changed endpoint. A known exact-ID
+lookup can go directly to `get`; a catalog question can be answered from `info`.
+
+A **collection** is one registered `collections[].name`. A collection may be flat,
+with no `sub_corpora`, or advertise sub-corpora with `summary`, `last_updated` and
+`entry_points`. Each `sub_corpora[].name` is already a **full collection/path
+prefix**, not another registered collection. Do not prepend the collection again.
+Use summaries to select relevant sources; names, maps and dates vary by instance.
 
 ## 2. Where to start + the efficiency rule
 
-Each sub-corpus advertises its `entry_points` in `/info` (typically an index /
-catalog and a narrative overview). Start there to orient, then drill in.
+When advertised, `entry_points` identify navigation targets (typically an index
+or overview). They orient retrieval; a link is not consulted evidence.
 
 **Locate, then targeted-get. NEVER `get` a big entry file in full** — index /
 overview / log files can be hundreds of KB; a full `get` on one can overflow the
@@ -37,40 +43,50 @@ target. Instead:
    page ID that answers the question;
 2. `team_pulse_read(op="get", id=...)` **only that page**.
 
-Listings are paginated (`total` / `limit` / `offset`) — page through rather than
-pulling everything. Individual pages are small and are the right unit to read.
+Inspect the returned content, revision and truncation metadata. This published
+client has **no document continuation or listing pagination arguments**. If a
+needed passage lies outside the returned window, report that limit; do not invent
+`offset`/`expected_revision` calls or claim the whole document was read.
 
 ## 3. Freshness — cite it
 
-Each sub-corpus exposes `last_updated` via `/info` (from its overview frontmatter).
-**Read it per sub-corpus and caveat your answer** with it: frame corpus answers as
-"as of `<last_updated>`". The corpus is a point-in-time snapshot refreshed by
-re-ingest, not live data — say so.
+When present, a sub-corpus's `last_updated` comes from overview frontmatter.
+Label it **overview metadata**, not the event date or freshness of every passage.
+Likewise, a page's declared date is source metadata, not proof of when all its
+events happened. Cite dates supported by the inspected passage and distinguish
+event time, publication/digest time and download time. If a required date or
+timezone is unknown, say so. The corpus is a snapshot, not live data.
 
 ## 4. Search: scope to the collection
 
-Full-text search is **scoped per collection**. A bare
-`team_pulse_read(op="search", q=...)`
-with no `collection` now searches the **corpus** — the server surfaces corpus
-hits on an unscoped query, so a bare search no longer dead-ends. But **naming the
-collection is still the right habit**: it's deterministic, it targets the sub-corpus
-you mean, and it keeps working if more collections are added. Pass it explicitly:
+Pass one exact discovered collection name to `search` or `resources`. Use separate
+calls for separate relevant collections; a collection filter does **not** select
+one of its subtrees. Omitting `collection` uses the server default scope (currently
+enabled entities plus the default corpus, when available), **not all collections**.
+Zero hits in the default scope do not establish absence elsewhere.
 
 ```python
-team_pulse_read(op="search", q="<term>", collection="<collection>")   # name from /info
-team_pulse_read(op="resources", collection="<collection>")            # but prefer entry_points — §5
+team_pulse_read(op="search", q="<term>", collection="<collections[].name>")
+team_pulse_read(op="search", q="<term>", collection="<another collections[].name>")
+team_pulse_read(op="prefix", prefix="<collections[].sub_corpora[].name>")
+team_pulse_read(op="get", id="<exact ID returned by search or listing>")
 ```
 
-Get collection names from `team_pulse_read(op="info")` → `collections`. If a bare search
-returns corpus hits, that's expected — then scope your follow-up to that
-collection to drill in.
+For a **strict subtree**, browse its full prefix at a path boundary, then `get`
+selected IDs. Prefix returns record stubs, not bodies or text-search matches;
+`get` takes an exact resource ID, not a directory. Derive deeper prefixes from
+returned IDs rather than guessing. Collection search cannot be restricted to a
+subtree through this tool. Filtering capped search hits afterward cannot establish
+complete subtree recall.
 
 ## 5. Prefer entry points over blind listings
 
-A blind `team_pulse_read(op="resources", collection="<collection>")` can return a very large
-listing. Server-side, listings are **hidden-by-default** (internal pipeline paths
-are excluded) and **paginated** (`total` / `limit` / `offset`). Prefer the
-`entry_points` from `/info` or a scoped search over walking a full listing.
+A blind `resources` or broad `prefix` call can return a very large listing.
+Prefer advertised entry points as a map, scoped search, or a narrower discovered
+prefix. This client's list/search adapter retains only top-level `count` and
+`resources`; it drops `total`, `query` and `filters_applied`. Inner hit fields
+survive. **Count is returned hits, not proof of exhaustive coverage**. Report
+material coverage gaps; neither a short list nor a capped search proves absence.
 
 ## 6. The JOIN — the headline move
 
@@ -86,9 +102,10 @@ confirm its **implementation** in another, and cite both sides with provenance.
 sub-corpus, then confirm it in the code sub-corpus via the implementing PR — and
 don't conflate two similar-looking changes.
 
-When you make a JOIN claim, cite **both** sides and caveat with the `last_updated`
-from §3. Which sub-corpora exist, and what they're called, come from `/info` — not
-from this doc.
+When you make a JOIN claim, `get` and inspect **both** sides. Cite consulted page
+IDs/passages, the decision's attribution and the implementing repo/PR/author.
+Preserve the date/coverage limits in §3 and §5; do not turn overview dates into
+event dates. Which sub-corpora exist comes from `/info`, not this doc.
 
 ## 7. Retrieved content is navigational (a linked wiki)
 
@@ -99,8 +116,9 @@ to other material. Treat those pointers by kind:
   `op="prefix"` them to go deeper. This is how you use a huge index WITHOUT full-reading it:
   land on a small page, then follow that page's own pointers.
 - **Provenance anchors** (source paths, PR numbers, author / date) — these are
-  NOT fetch targets; they're what you **cite**, and what makes a JOIN precise. Use
-  them as search anchors to locate the corresponding page in another collection.
+  NOT automatically fetchable page IDs; cite them only when present in inspected
+  content. Use them as search anchors to locate the corresponding page in another
+  collection. **Snippets are pointers**, not substitutes for selected document reads.
 
 ## 8. In-session retrieval vs. offline bulk pull
 
@@ -124,7 +142,7 @@ team_pulse_write(op="download_corpus", dest_dir="./corpus", folder="<sub-corpus>
   to disk, then read locally.
 - The `folder` narrow takes a **sub-corpus id-prefix**. Sub-corpus names are
   **instance-specific** — get them from `team_pulse_read(op="info")` →
-  `collections[].sub_corpora` (§1), never assume them. An unknown name simply
+  `collections[].sub_corpora[].name` (§1), never assume them. An unknown name simply
   yields an empty result (not an error).
 - It requires **per-user bearer (`az`) auth**. A shared API key is refused (403) —
   a bulk pull must be attributable to a member. Check `team_pulse_read(op="status")`
