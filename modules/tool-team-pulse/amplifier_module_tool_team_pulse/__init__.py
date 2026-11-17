@@ -8,14 +8,14 @@ library).  This package is a thin Amplifier adapter.
 
 THREE tools are mounted:
     * :class:`TeamPulseReadTool`  — ``team_pulse_read``  (op: get | search |
-      prefix | resources | graph | info | whoami | status)
+      prefix | resources | info | whoami | status)
     * :class:`TeamPulseWriteTool` — ``team_pulse_write`` (op: submit_answer |
       download_corpus | configure)
     * :class:`TeamPulseAskTool`   — ``team_pulse_ask``, UNCHANGED and
       deliberately separate: it triggers server-side LLM spend, so it stays an
       explicit, undisguised call rather than an op behind an enum.
 
-:data:`COMPAT_TABLE` maps every formerly-separate tool name to exactly one
+:data:`COMPAT_TABLE` maps each supported formerly-separate tool name to exactly one
 ``(new_tool, op)`` pair.
 
 The per-op handler classes (``TeamPulseGetTool``, ``TeamPulseConfigureTool``, …)
@@ -27,7 +27,6 @@ Public surface:
     * :class:`TeamPulseConfigureTool`
     * :class:`TeamPulseDownloadCorpusTool`
     * :class:`TeamPulseGetTool`
-    * :class:`TeamPulseGraphTool`
     * :class:`TeamPulseInfoTool`
     * :class:`TeamPulsePrefixTool`
     * :class:`TeamPulseReadTool`
@@ -47,7 +46,6 @@ from .tool import (
     TeamPulseConfigureTool,
     TeamPulseDownloadCorpusTool,
     TeamPulseGetTool,
-    TeamPulseGraphTool,
     TeamPulseInfoTool,
     TeamPulsePrefixTool,
     TeamPulseReadTool,
@@ -66,7 +64,6 @@ __all__ = [
     "TeamPulseConfigureTool",
     "TeamPulseDownloadCorpusTool",
     "TeamPulseGetTool",
-    "TeamPulseGraphTool",
     "TeamPulseInfoTool",
     "TeamPulsePrefixTool",
     "TeamPulseReadTool",

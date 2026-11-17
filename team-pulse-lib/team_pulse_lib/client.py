@@ -455,11 +455,6 @@ class TeamPulseClient:
         resp = await self._get(path)
         return resp.json()
 
-    async def graph(self) -> Any:
-        """GET /api/lens/graph — return the full entity graph."""
-        resp = await self._get("/api/lens/graph")
-        return resp.json()
-
     async def whoami(self) -> Any:
         """GET /api/lens/me — resolve the caller's identity."""
         resp = await self._get("/api/lens/me")
