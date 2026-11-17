@@ -15,7 +15,6 @@ online generation left deliberately on its own.
 | `search` | `GET /api/lens/resources/search` | Text search; a bare query searches the corpus; pass `collection` to scope |
 | `prefix` | `GET /api/lens/resources/prefix/{prefix}` | Hierarchical ID listing |
 | `get` | `GET /api/lens/resources/{id}` | Fetch one resource |
-| `graph` | `GET /api/lens/graph` | Raw structural entity graph. Large payload; may include frozen/aging data — not a current-state source; use sparingly. |
 | `whoami` | `GET /api/lens/whoami` | The **server-verified** caller identity (handle/member_id) |
 | `status` | — (local) | THIS client's resolved config: `base_url`, `auth_mode`, no network call and no secrets. Works even when auth is broken. |
 
@@ -40,8 +39,8 @@ Team Pulse to answer.
 
 ## Old name → new call
 
-The twelve formerly-separate tools map one-to-one onto the three above. The same
-table lives in code as `COMPAT_TABLE` (importable from the package).
+The supported formerly-separate tools map one-to-one onto the calls below. The
+same table lives in code as `COMPAT_TABLE` (importable from the package).
 
 | Old tool | New call |
 |---|---|
@@ -49,7 +48,6 @@ table lives in code as `COMPAT_TABLE` (importable from the package).
 | `team_pulse_search` | `team_pulse_read(op="search", q=…)` |
 | `team_pulse_prefix` | `team_pulse_read(op="prefix", prefix=…)` |
 | `team_pulse_resources` | `team_pulse_read(op="resources", type=…)` |
-| `team_pulse_graph` | `team_pulse_read(op="graph")` |
 | `team_pulse_info` | `team_pulse_read(op="info")` |
 | `team_pulse_whoami` | `team_pulse_read(op="whoami")` |
 | `team_pulse_status` | `team_pulse_read(op="status")` |

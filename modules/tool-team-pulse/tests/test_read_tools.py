@@ -19,7 +19,6 @@ from amplifier_module_tool_team_pulse.tool import (
     _MOUNTED_TOOL_CLASSES,
     TeamPulseAskTool,
     TeamPulseGetTool,
-    TeamPulseGraphTool,
     TeamPulseInfoTool,
     TeamPulsePrefixTool,
     TeamPulseResourcesTool,
@@ -167,24 +166,6 @@ async def test_get_forwards_positional_id() -> None:
 
     assert result.success is True
     mock_client.get.assert_awaited_once_with("projects/tp")
-
-
-# ---------------------------------------------------------------------------
-# graph
-# ---------------------------------------------------------------------------
-
-
-async def test_graph_calls_graph() -> None:
-    """graph: calls client.graph() with no arguments."""
-    mock_client = _client()
-    mock_client.graph.return_value = {"team": {}, "projects": [], "members": []}
-    provider = _make_provider(mock_client)
-
-    tool = TeamPulseGraphTool(provider)
-    result = await tool.execute({})
-
-    assert result.success is True
-    mock_client.graph.assert_awaited_once_with()
 
 
 # ---------------------------------------------------------------------------
