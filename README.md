@@ -201,7 +201,6 @@ factual lookup** in v1. It will:
 * Fetch a specific resource (`team_pulse_read(op="get", id=...)`)
 * List resources of a type (`team_pulse_read(op="resources", type=...)`)
 * Search fuzzily (`team_pulse_read(op="search", q=...)`)
-* Walk the graph for cross-resource relationships (`team_pulse_read(op="graph")`)
 * Surface API errors verbatim (preserves the lens API's `{code, message, status}` envelope)
 
 It will NOT:
@@ -255,7 +254,6 @@ team-pulse context — only the ~1K tokens of tool schemas.
 | `GET /api/lens/resources/search` | `team_pulse_read(op="search", q=...)` | Naive text search, default limit 50, max 200 |
 | `GET /api/lens/resources/prefix/{p}` | `team_pulse_read(op="prefix", prefix=...)` | Hierarchical ID listing |
 | `GET /api/lens/resources/{id}` | `team_pulse_read(op="get", id=...)` | Fetch one resource |
-| `GET /api/lens/graph` | `team_pulse_read(op="graph")` | Full composed entity graph + reverse edges — **large** |
 | `GET /api/lens/whoami` | `team_pulse_read(op="whoami")` | Server-verified caller identity |
 | — (local, no network) | `team_pulse_read(op="status")` | This client's resolved config; no secrets |
 | `POST /api/lens/answers` | `team_pulse_write(op="submit_answer", ...)` | Record a session-mined answer |

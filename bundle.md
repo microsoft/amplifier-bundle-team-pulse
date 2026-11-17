@@ -25,7 +25,7 @@ hardcoded list.
 
 | Component | Where it lives | When loaded |
 |---|---|---|
-| `tool-team-pulse` — **three** tools: `team_pulse_read` (op: get/search/prefix/resources/graph/info/whoami/status), `team_pulse_write` (op: submit_answer/download_corpus/configure), and `team_pulse_ask` (kept separate: it spends server-side LLM budget) | `behaviors/team-pulse.yaml` | **Always-on** (~4K chars of rendered schema) — `contributes.tools` is v1.1 |
+| `tool-team-pulse` — **three** tools: `team_pulse_read` (op: get/search/prefix/resources/info/whoami/status), `team_pulse_write` (op: submit_answer/download_corpus/configure), and `team_pulse_ask` (kept separate: it spends server-side LLM budget) | `behaviors/team-pulse.yaml` | **Always-on** (~4K chars of rendered schema) — `contributes.tools` is v1.1 |
 | `team-pulse-expert` agent (definition **inlined** into the mode; discovers resource types live via `team_pulse_read(op="info")` rather than a fixed list) | Mounted by `modes/team-pulse.md` via `contributes.agents` | Only while `/team-pulse` mode is active (zero cost otherwise) |
 | `context/using-team-pulse.md` reference doc | Mounted by `modes/team-pulse.md` via `contributes.context` | Only while `/team-pulse` mode is active (zero cost otherwise) |
 | `/team-pulse` mode | `modes/team-pulse.md`, discovered via the modes bundle | Activate with `/mode team-pulse` |
